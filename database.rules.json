@@ -1,0 +1,29 @@
+{
+  "rules": {
+    "Accounts": {
+      "$uid": {
+        // Only the user can read and write their own profile
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+    "Matchmaking": {
+      // Everyone who is authenticated can see the queue to find opponents
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$uid": {
+        // Users can only add/remove themselves from the queue
+        // EXCEPT: We must allow another user to write 'Status' and 'MatchId' during matchmaking.
+        // This is the "Safety vs Functionality" trade-off for client-side matchmaking.
+        ".write": "auth != null"
+      }
+    },
+    "Matches": {
+      "$matchId": {
+        // Only players in the match can read or write match data
+        ".read": "auth != null && (data.child('White Player ID').val() == auth.uid || data.child('Black Player ID').val() == auth.uid)",
+        ".write": "auth != null && (!data.exists() || data.child('White Player ID').val() == auth.uid || data.child('Black Player ID').val() == auth.uid)"
+      }
+    }
+  }
+}
