@@ -3,6 +3,7 @@ import '../engine/chess_engine.dart';
 import '../utils/constants.dart';
 import 'chess_piece_widget.dart';
 import '../models/powerup.dart';
+import '../services/settings_service.dart';
 
 class ChessBoardWidget extends StatefulWidget {
   final ChessEngine engine;
@@ -56,27 +57,34 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget> {
   }
 
   Widget _buildBoard(double squareSize) {
-    return GridView.builder(
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 8,
-      ),
-      itemCount: 64,
-      itemBuilder: (context, index) {
-        int row = index ~/ 8;
-        int col = index % 8;
+    return AnimatedBuilder(
+      animation: SettingsService(),
+      builder: (context, _) {
+        final theme = SettingsService().boardTheme;
+        return GridView.builder(
+          padding: EdgeInsets.zero,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 8,
+          ),
+          itemCount: 64,
+          itemBuilder: (context, index) {
+            int row = index ~/ 8;
+            int col = index % 8;
 
-        // Adjust for orientation
-        if (!widget.isWhiteOrientation) {
-          row = 7 - row;
-          col = 7 - col;
-        }
+            // Adjust for orientation
+            if (!widget.isWhiteOrientation) {
+              row = 7 - row;
+              col = 7 - col;
+            }
 
-        bool isLight = (row + col) % 2 == 0;
-        return Container(
-          color: isLight ? AppColors.boardLight : AppColors.boardDark,
+            bool isLight = (row + col) % 2 == 0;
+            return Container(
+              color: isLight ? AppColors.getBoardLight(theme) : AppColors.getBoardDark(theme),
+            );
+          },
         );
-      },
+      }
     );
   }
 

@@ -69,4 +69,30 @@ class DatabaseService {
       return Transaction.success(current + 1);
     });
   }
+
+  /// Get leaderboard (top 50 players by Elo)
+  Future<List<PlayerModel>> getLeaderboard() async {
+    try {
+      // Fetch top 50 by Elo. limitToLast returns highest values since they're sorted ASC.
+      DataSnapshot snap = await _db.ref('Accounts')
+          .orderByChild('Elo')
+          .limitToLast(50)
+          .get();
+      
+      if (snap.exists && snap.value != null) {
+        Map<dynamic, dynamic> data = snap.value as Map<dynamic, dynamic>;
+        List<PlayerModel> list = [];
+        data.forEach((key, value) {
+          list.add(PlayerModel.fromJson(key.toString(), value as Map<dynamic, dynamic>));
+        });
+        // Firebase returns in ascending order, we want descending for leaderboard
+        list.sort((a, b) => b.elo.compareTo(a.elo));
+        return list;
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Error getting leaderboard: $e');
+      return [];
+    }
+  }
 }

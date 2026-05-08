@@ -6,58 +6,79 @@ import 'package:google_fonts/google_fonts.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AppColors {
-  // Primary palette
-  static const Color background = Color(0xFF070B19);
-  static const Color surface = Color(0x1AFFFFFF); // Translucent
-  static const Color surfaceLight = Color(0x33FFFFFF); // Translucent light
+  // Primary palette - Premium Dark Mode
+  static const Color background = Color(0xFF0F172A); // Slate 900
+  static const Color backgroundEnd = Color(0xFF020617); // Slate 950
+  static const Color surface = Color(0x33FFFFFF); // Translucent
+  static const Color surfaceLight = Color(0x4DFFFFFF); // Translucent light
   static const Color cardBg = Color(0x40000000); // Dark translucent
 
-  // Accent colors
-  static const Color accentCyan = Color(0xFF00E5FF);
-  static const Color accentPurple = Color(0xFFB000FF);
-  static const Color accentAmber = Color(0xFFFFB300);
-  static const Color accentGreen = Color(0xFF00FF88);
-  static const Color accentRed = Color(0xFFFF0055);
-  static const Color accentPink = Color(0xFFFF00CC);
+  // Accent colors (Premium Neon/Pastel)
+  static const Color accentCyan = Color(0xFF06B6D4); // Cyan 500
+  static const Color accentPink = Color(0xFFEC4899); // Pink 500
+  static const Color accentPurple = Color(0xFFA855F7); // Purple 500
+  static const Color accentAmber = Color(0xFFF59E0B); // Amber 500
+  static const Color accentGreen = Color(0xFF10B981); // Emerald 500
+  static const Color accentRed = Color(0xFFEF4444); // Red 500
 
-  // Board colors
-  static const Color boardLight = Color(0x22FFFFFF); // Glass light squares
-  static const Color boardDark = Color(0x11000000); // Glass dark squares
-  static const Color boardBorder = Color(0x6600E5FF);
+  // Board colors (Pastel/Chess.com style)
+  static Color getBoardLight(String theme) {
+    switch(theme) {
+      case 'Classic Wood': return const Color(0xFFF0D9B5);
+      case 'Dark Neon': return const Color(0xFF2B2B36);
+      case 'Ocean Blue': return const Color(0xFFE0EAEF);
+      case 'Pastel':
+      default:
+        return const Color(0xFFEEEED2);
+    }
+  }
+
+  static Color getBoardDark(String theme) {
+    switch(theme) {
+      case 'Classic Wood': return const Color(0xFFB58863);
+      case 'Dark Neon': return const Color(0xFF5CE1E6).withAlpha(150);
+      case 'Ocean Blue': return const Color(0xFF4B7399);
+      case 'Pastel':
+      default:
+        return const Color(0xFF769656); // Chess.com green
+    }
+  }
+  static const Color boardBorder = Color(0xFF4A623A);
 
   // Highlight colors
-  static const Color moveHighlight = Color(0x6600E5FF);
-  static const Color lastMoveHighlight = Color(0x44FFB300);
-  static const Color checkHighlight = Color(0x88FF0055);
-  static const Color captureHighlight = Color(0x66FF0055);
-  static const Color selectedHighlight = Color(0x6600E5FF);
+  static const Color moveHighlight = Color(0x66000000); // Dark dots for moves
+  static const Color lastMoveHighlight = Color(0x66F9DF6E); // Yellow highlight
+  static const Color checkHighlight = Color(0x99FF3333); // Red check
+  static const Color captureHighlight = Color(0x66000000);
+  static const Color selectedHighlight = Color(0x66F9DF6E);
 
-  // Powerup tier colors
-  static const Color tier1 = Color(0xFF8B949E);
-  static const Color tier2 = Color(0xFF00E5FF);
-  static const Color tier3 = Color(0xFFB000FF);
-  static const Color tier4 = Color(0xFFFFB300);
+  // Powerup tier colors (5 tiers) - matched to card rarity
+  static const Color tierCommon = Color(0xFF9E9E9E); // Silver/Grey
+  static const Color tierUncommon = Color(0xFF06D6A0); // Mint Green
+  static const Color tierRare = Color(0xFF5CE1E6); // Bright Cyan
+  static const Color tierEpic = Color(0xFFCB6CE6); // Purple
+  static const Color tierLegendary = Color(0xFFFFD166); // Gold
 
   // Text
   static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFF8B949E);
-  static const Color textMuted = Color(0xFF484F58);
+  static const Color textSecondary = Color(0xFFC0C0D0);
+  static const Color textMuted = Color(0xFF808090);
 
   // Gradients
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [Color(0xFF070B19), Color(0xFF0A0F24), Color(0xFF070B19)],
+    colors: [Color(0xFF0F172A), Color(0xFF020617)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient dangerGradient = LinearGradient(
-    colors: [Color(0xFFFF0055), Color(0xFFFF00CC)],
+    colors: [Color(0xFFEF4444), Color(0xFFEC4899)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient goldGradient = LinearGradient(
-    colors: [Color(0xFFFFB300), Color(0xFFFF6600)],
+    colors: [Color(0xFFFFD166), Color(0xFFFF9F1C)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -148,6 +169,17 @@ class ChessPieceUnicode {
     'n': '♞',
     'p': '♟',
   };
+
+  /// Solid (filled) glyphs used for BOTH white and black pieces.
+  /// Color differentiation is handled by paint fill/stroke in ChessPieceWidget.
+  static const Map<String, String> solid = {
+    'k': '♚',
+    'q': '♛',
+    'r': '♜',
+    'b': '♝',
+    'n': '♞',
+    'p': '♟',
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,7 +188,7 @@ class ChessPieceUnicode {
 
 class GameConstants {
   static const int defaultTimeSeconds = 600; // 10 minutes
-  static const int maxPowerupsHeld = 3;
+  static const int maxPowerupsHeld = 5;
   static const int eloMatchRange = 200;
   static const int eloMatchExpandedRange = 500;
   static const int matchmakingTimeoutSeconds = 15;

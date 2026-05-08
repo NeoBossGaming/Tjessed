@@ -16,6 +16,7 @@ import '../widgets/timer_widget.dart';
 import '../widgets/vfx_overlay.dart';
 import '../widgets/particle_overlay.dart';
 import '../widgets/animated_background.dart';
+import '../widgets/card_reveal_overlay.dart';
 import 'package:uuid/uuid.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,12 +27,16 @@ class GameScreen extends StatefulWidget {
   final String matchId;
   final String playerUid;
   final bool isMultiplayer;
+  final String? initialFen;
+  final String? playerColor;
 
   const GameScreen({
     super.key,
     required this.matchId,
     required this.playerUid,
     required this.isMultiplayer,
+    this.initialFen,
+    this.playerColor,
   });
 
   @override
@@ -138,9 +143,17 @@ class _GameScreenState extends State<GameScreen> {
   // ─────────────────────────────────────────────────────────────────────────────
 
   void _setupSingleplayer() {
-    _myColor = 'white';
-    _isWhiteOrientation = true;
+    _myColor = widget.playerColor ?? 'white';
+    _isWhiteOrientation = _myColor == 'white';
+    if (widget.initialFen != null) {
+      _engine.loadFen(widget.initialFen!);
+    }
     _startClock();
+
+    // If it's the AI's turn right from the start, trigger it.
+    if (_engine.turnColor != _myColor) {
+      Future.delayed(const Duration(milliseconds: 600), _doAiTurn);
+    }
   }
 
   void _setupMultiplayer() {
@@ -310,13 +323,15 @@ class _GameScreenState extends State<GameScreen> {
       final newPu = _powerupEngine.rollPowerup(captured.toString());
       if (newPu != null && _myPowerups.length < GameConstants.maxPowerupsHeld) {
         setState(() => _myPowerups.add(newPu));
-        _showSnack('Obtained ${newPu.name}!', newPu.tier.color);
+        showCardReveal(context, newPu);
         _addPowerupEffect(newPu.tier.color, square: to, count: newPu.tier.level * 10 + 10);
       }
     }
 
-    // Decrement effects each half-turn
+    // Tick down effects and handle expirations (e.g., Crown Thief restore)
+    final expiring = _activeEffects.where((e) => e.turnsRemaining <= 1).toList();
     setState(() => _activeEffects = PowerupEngine.tickEffects(_activeEffects));
+    PowerupEngine.handleExpiredEffects(expiring, _engine);
 
     // Extra turn handling
     if (_hasExtraTurn) {
@@ -394,6 +409,14 @@ class _GameScreenState extends State<GameScreen> {
 
 
   void _executePowerup(PowerupType p, {String? targetSquare}) {
+    // Check if sabotaged (enemy disabled our powerup usage)
+    final isSabotaged = _activeEffects.any((e) =>
+        e.type == PowerupType.sabotage);
+    if (isSabotaged) {
+      _showSnack('Power-ups are sabotaged! Cannot use.', AppColors.accentRed);
+      return;
+    }
+
     final res = _powerupEngine.applyPowerup(
       type: p,
       engine: _engine,
@@ -403,7 +426,13 @@ class _GameScreenState extends State<GameScreen> {
     );
 
     if (!res.success) {
-      _showSnack(res.message, AppColors.accentRed);
+      if (res.requiresTarget) {
+        // Set pending target mode for targeted power-ups
+        setState(() => _pendingTargetPowerup = p);
+        _showSnack(res.message, AppColors.accentAmber);
+      } else {
+        _showSnack(res.message, AppColors.accentRed);
+      }
       return;
     }
 
@@ -413,16 +442,26 @@ class _GameScreenState extends State<GameScreen> {
       _myPowerups.remove(p);
       if (res.activeEffect != null) _activeEffects.add(res.activeEffect!);
       if (res.timeBonus > 0) _myTimeLeft += res.timeBonus;
+      if (res.timePenalty > 0) _opponentTimeLeft -= res.timePenalty;
       if (res.highlightSquares != null) {
         _highlightedSquares = [..._highlightedSquares, ...res.highlightSquares!];
       }
-      if (p == PowerupType.freeze || p == PowerupType.doubleMove) {
+      // Extra turn from freeze, double move, or mirror dimension
+      if (p == PowerupType.freeze ||
+          p == PowerupType.doubleMove ||
+          p == PowerupType.mirrorDimension) {
         _hasExtraTurn = true;
       }
       if (res.removesEnemyPowerup && _opponentPowerups.isNotEmpty) {
         _opponentPowerups.removeLast();
       }
     });
+
+    // Check if the powerup caused checkmate (e.g., Black Hole, Exile)
+    if (_engine.gameOver) {
+      _handleGameOver('checkmate');
+      return;
+    }
 
     _showSnack(res.message, p.tier.color);
     if (widget.isMultiplayer) _dbService.incrementPowerupsUsed(widget.playerUid);
@@ -543,6 +582,7 @@ class _GameScreenState extends State<GameScreen> {
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.transparent,
       appBar: AppBar(
+        toolbarHeight: 60,
         title: Text(widget.isMultiplayer ? 'Ranked Match' : 'vs AI', style: AppTextStyles.heading2),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -608,8 +648,8 @@ class _GameScreenState extends State<GameScreen> {
                         gradient: RadialGradient(
                           colors: [
                             Colors.transparent,
-                            AppColors.accentRed.withAlpha((value * 127).toInt()), // 0.5 * 255
-                            AppColors.accentRed.withAlpha((value * 204).toInt()), // 0.8 * 255
+                            AppColors.accentRed.withAlpha((value * 127).toInt()),
+                            AppColors.accentRed.withAlpha((value * 204).toInt()),
                           ],
                           stops: const [0.4, 0.8, 1.0],
                         ),
@@ -621,64 +661,76 @@ class _GameScreenState extends State<GameScreen> {
                     );
                   },
                   child: Container(
+                    width: boardSize,
+                    height: boardSize,
+                    clipBehavior: Clip.hardEdge,
                     decoration: BoxDecoration(
                       boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 20)],
                       border: Border.all(color: AppColors.boardBorder, width: 3),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                  child: DragTarget<PowerupType>(
-                    onWillAcceptWithDetails: (details) => !_isGameOver && _engine.turnColor == _myColor,
-                    onAcceptWithDetails: (details) {
-                      // Get the local position of the drop within the DragTarget
-                      final RenderBox box = context.findRenderObject() as RenderBox;
-                      final localPos = box.globalToLocal(details.offset);
-                      final square = _offsetToSquare(localPos, boardSize);
-                      _executePowerup(details.data, targetSquare: square);
-                    },
-                    builder: (context, candidateData, rejectedData) {
-                      return Stack(
-                        children: [
-                          ChessBoardWidget(
-                            engine: _engine,
-                            size: boardSize,
-                            isWhiteOrientation: _isWhiteOrientation,
-                            onMove: (from, to, promo) => _executeMove(from, to, promo),
-                            onSquareTap: _handleSquareTap,
-                            activeEffects: _activeEffects,
-                            selectedSquare: _selectedSquare,
-                            highlightedSquares: _highlightedSquares,
-                            lastMoveSquares: _lastMoveSquares,
-                          ),
-                          // Visual indicator for dropping
-                          if (candidateData.isNotEmpty)
-                            Container(
-                              color: candidateData.first!.tier.color.withAlpha(40),
-                              child: Center(
-                                child: Icon(
-                                  candidateData.first!.icon,
-                                  color: candidateData.first!.tier.color.withAlpha(100),
-                                  size: 100,
+                    child: SizedBox(
+                      width: boardSize,
+                      height: boardSize,
+                      child: DragTarget<PowerupType>(
+                        onWillAcceptWithDetails: (details) => !_isGameOver && _engine.turnColor == _myColor,
+                        onAcceptWithDetails: (details) {
+                          final RenderBox box = context.findRenderObject() as RenderBox;
+                          final localPos = box.globalToLocal(details.offset);
+                          final square = _offsetToSquare(localPos, boardSize);
+                          _executePowerup(details.data, targetSquare: square);
+                        },
+                        builder: (context, candidateData, rejectedData) {
+                          return SizedBox(
+                            width: boardSize,
+                            height: boardSize,
+                            child: Stack(
+                              clipBehavior: Clip.hardEdge,
+                              children: [
+                                ChessBoardWidget(
+                                  engine: _engine,
+                                  size: boardSize,
+                                  isWhiteOrientation: _isWhiteOrientation,
+                                  onMove: (from, to, promo) => _executeMove(from, to, promo),
+                                  onSquareTap: _handleSquareTap,
+                                  activeEffects: _activeEffects,
+                                  selectedSquare: _selectedSquare,
+                                  highlightedSquares: _highlightedSquares,
+                                  lastMoveSquares: _lastMoveSquares,
                                 ),
-                              ),
+                                if (candidateData.isNotEmpty)
+                                  Positioned.fill(
+                                    child: Container(
+                                      color: candidateData.first!.tier.color.withAlpha(40),
+                                      child: Center(
+                                        child: Icon(
+                                          candidateData.first!.icon,
+                                          color: candidateData.first!.tier.color.withAlpha(100),
+                                          size: 100,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                VfxOverlay(
+                                  activeEffects: _activeEffects,
+                                  boardSize: boardSize,
+                                  isWhiteOrientation: _isWhiteOrientation,
+                                ),
+                                ParticleOverlay(
+                                  effects: _recentEffects,
+                                  boardSize: boardSize,
+                                  isWhiteOrientation: _isWhiteOrientation,
+                                ),
+                              ],
                             ),
-                          VfxOverlay(
-                            activeEffects: _activeEffects,
-                            boardSize: boardSize,
-                            isWhiteOrientation: _isWhiteOrientation,
-                          ),
-                          ParticleOverlay(
-                            effects: _recentEffects,
-                            boardSize: boardSize,
-                            isWhiteOrientation: _isWhiteOrientation,
-                          ),
-                        ],
-                      );
-                    },
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
 
             // ── My Powerups ─────────────────────────────────────────────────────
             Padding(

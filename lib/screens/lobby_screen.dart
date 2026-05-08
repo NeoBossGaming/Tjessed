@@ -8,6 +8,9 @@ import '../utils/constants.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/animated_background.dart';
 import 'game_screen.dart';
+import 'leaderboard_screen.dart';
+import 'settings_screen.dart';
+import 'playground_screen.dart';
 import 'dart:async';
 
 class LobbyScreen extends StatefulWidget {
@@ -253,11 +256,58 @@ class _LobbyScreenState extends State<LobbyScreen> {
                                 onPressed: _playVsAi,
                               ),
                             ).animate().fade(delay: 300.ms).slideY(begin: 0.2),
+                            const SizedBox(height: 12),
+                            // New Action Buttons Row
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildSmallActionButton(
+                                    icon: Icons.leaderboard,
+                                    label: "RANKS",
+                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LeaderboardScreen(currentPlayerUid: playerProfile!.uid))),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildSmallActionButton(
+                                    icon: Icons.grid_view_rounded,
+                                    label: "SANDBOX",
+                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlaygroundScreen(playerUid: playerProfile!.uid))),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildSmallActionButton(
+                                    icon: Icons.settings,
+                                    label: "SETTINGS",
+                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+                                  ),
+                                ),
+                              ],
+                            ).animate().fade(delay: 400.ms).slideY(begin: 0.2),
                           ],
                         ),
                     ],
                   ),
                 ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmallActionButton({required IconData icon, required String label, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSmall),
+      child: GlassContainer(
+        opacity: 0.1,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          children: [
+            Icon(icon, color: AppColors.accentCyan, size: 24),
+            const SizedBox(height: 4),
+            Text(label, style: AppTextStyles.caption.copyWith(fontSize: 9, fontWeight: FontWeight.bold)),
+          ],
         ),
       ),
     );

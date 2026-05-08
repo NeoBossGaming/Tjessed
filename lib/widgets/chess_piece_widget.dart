@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../utils/constants.dart';
+import 'package:chess_vectors_flutter/chess_vectors_flutter.dart';
+
 
 class ChessPieceWidget extends StatelessWidget {
   final String pieceType;
@@ -15,33 +16,35 @@ class ChessPieceWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // For now, we use unicode characters as placeholders.
-    // Later this can be swapped with Image.asset()
-    String unicode = color == 'white'
-        ? ChessPieceUnicode.white[pieceType] ?? ''
-        : ChessPieceUnicode.black[pieceType] ?? '';
+    final bool isWhite = color == 'white';
+    final double actualSize = size * 0.9; // Slight padding
 
-    // To make black pieces visible on dark boards, we can add a subtle text shadow
+    Widget pieceWidget;
+    switch (pieceType.toLowerCase()) {
+      case 'p':
+        pieceWidget = isWhite ? WhitePawn(size: actualSize) : BlackPawn(size: actualSize);
+        break;
+      case 'n':
+        pieceWidget = isWhite ? WhiteKnight(size: actualSize) : BlackKnight(size: actualSize);
+        break;
+      case 'b':
+        pieceWidget = isWhite ? WhiteBishop(size: actualSize) : BlackBishop(size: actualSize);
+        break;
+      case 'r':
+        pieceWidget = isWhite ? WhiteRook(size: actualSize) : BlackRook(size: actualSize);
+        break;
+      case 'q':
+        pieceWidget = isWhite ? WhiteQueen(size: actualSize) : BlackQueen(size: actualSize);
+        break;
+      case 'k':
+        pieceWidget = isWhite ? WhiteKing(size: actualSize) : BlackKing(size: actualSize);
+        break;
+      default:
+        pieceWidget = const SizedBox.shrink();
+    }
+
     return Center(
-      child: Text(
-        unicode,
-        style: TextStyle(
-          fontSize: size * 0.8,
-          fontWeight: color == 'white' ? FontWeight.w900 : FontWeight.normal,
-          color: color == 'white' ? Colors.white : Colors.black87,
-          shadows: [
-            Shadow(
-              color: color == 'white' ? Colors.black.withAlpha(200) : Colors.white.withAlpha(120),
-              blurRadius: 6.0,
-              offset: const Offset(0, 3),
-            ),
-            Shadow(
-              color: color == 'white' ? AppColors.accentCyan.withAlpha(150) : AppColors.accentRed.withAlpha(150),
-              blurRadius: 12.0,
-            ),
-          ],
-        ),
-      ),
+      child: pieceWidget,
     );
   }
 }

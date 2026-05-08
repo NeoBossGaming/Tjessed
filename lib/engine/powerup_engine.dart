@@ -3,16 +3,61 @@ import 'package:chess/chess.dart' as ch;
 import '../models/powerup.dart';
 import 'chess_engine.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POWERUP ENGINE — RNG Rarity Roll + Apply Logic for 22 Power-Ups
+// ─────────────────────────────────────────────────────────────────────────────
+
 class PowerupEngine {
   final Random _random = Random();
 
+  // ── RARITY DISTRIBUTION TABLES ──────────────────────────────────────────────
+  // Each table is indexed by tier: [Common, Uncommon, Rare, Epic, Legendary]
+  // Values are cumulative probabilities (0.0 to 1.0).
+
+  static const Map<PowerupTier, List<double>> _rarityTable = {
+    // Killing a pawn: 70% Common, 20% Uncommon, 7% Rare, 2.5% Epic, 0.5% Legendary
+    PowerupTier.common:    [0.70, 0.90, 0.97, 0.995, 1.0],
+    // Killing a knight/bishop: 10% Common, 50% Uncommon, 25% Rare, 12% Epic, 3% Legendary
+    PowerupTier.uncommon:  [0.10, 0.60, 0.85, 0.97, 1.0],
+    // Killing a rook: 5% Common, 15% Uncommon, 45% Rare, 28% Epic, 7% Legendary
+    PowerupTier.rare:      [0.05, 0.20, 0.65, 0.93, 1.0],
+    // Killing a queen: 2% Common, 8% Uncommon, 20% Rare, 50% Epic, 20% Legendary
+    PowerupTier.epic:      [0.02, 0.10, 0.30, 0.80, 1.0],
+    // (Legendary base is not normally reachable via captures, but included for completeness)
+    PowerupTier.legendary: [0.0, 0.0, 0.10, 0.40, 1.0],
+  };
+
+  static const List<PowerupTier> _tierOrder = [
+    PowerupTier.common,
+    PowerupTier.uncommon,
+    PowerupTier.rare,
+    PowerupTier.epic,
+    PowerupTier.legendary,
+  ];
+
+  /// Roll a powerup with weighted RNG based on the captured piece.
   PowerupType? rollPowerup(String capturedPieceType) {
     if (capturedPieceType == 'k') return null;
-    final tier = PowerupType.tierForPiece(capturedPieceType);
-    final pool = PowerupType.forTier(tier);
+
+    final baseTier = PowerupType.baseTierForPiece(capturedPieceType);
+    final distribution = _rarityTable[baseTier]!;
+    final roll = _random.nextDouble();
+
+    // Find which tier the roll lands in
+    PowerupTier resultTier = PowerupTier.legendary; // fallback
+    for (int i = 0; i < distribution.length; i++) {
+      if (roll < distribution[i]) {
+        resultTier = _tierOrder[i];
+        break;
+      }
+    }
+
+    final pool = PowerupType.forTier(resultTier);
     if (pool.isEmpty) return null;
     return pool[_random.nextInt(pool.length)];
   }
+
+  // ── APPLY POWERUP ─────────────────────────────────────────────────────────
 
   PowerupResult applyPowerup({
     required PowerupType type,
@@ -23,16 +68,108 @@ class PowerupEngine {
     int currentTimeLeft = 0,
   }) {
     switch (type) {
+      // ── COMMON ────────────────────────────────────────────────────────────
       case PowerupType.timeWarp:
         return PowerupResult(success: true, message: '+30 seconds added!', timeBonus: 30);
 
-      case PowerupType.scout:
-        final opp = playerColor == 'white' ? 'black' : 'white';
+      case PowerupType.sniper:
+        if (targetSquare == null) {
+          return PowerupResult(success: false, message: 'Select an enemy piece to snipe!', requiresTarget: true);
+        }
+        final piece = engine.getPiece(targetSquare);
+        if (piece == null || piece.type == ch.PieceType.KING) {
+          return PowerupResult(success: false, message: 'Cannot snipe empty squares or the King!');
+        }
+        final pColor = piece.color == ch.Color.WHITE ? 'white' : 'black';
+        if (pColor == playerColor) {
+          return PowerupResult(success: false, message: 'Must target an ENEMY piece!');
+        }
+        
+        // Simple check: is there a rook or queen on the same file/rank?
+        bool hasLos = false;
+        final targetFile = targetSquare[0];
+        final targetRank = targetSquare[1];
+        engine.getBoardPieces().forEach((sq, p) {
+          if (p.color == playerColor && (p.type == 'r' || p.type == 'q')) {
+            if (sq[0] == targetFile || sq[1] == targetRank) {
+              hasLos = true;
+            }
+          }
+        });
+
+        if (!hasLos) {
+          return PowerupResult(success: false, message: 'No Queen/Rook has line of sight (same rank/file)!');
+        }
+
+        engine.removePiece(targetSquare);
+        return PowerupResult(success: true, message: 'BOOM! Target neutralized.', swappedSquares: [targetSquare]);
+
+      case PowerupType.pawnWall:
+        int spawned = 0;
+        final targetRank = playerColor == 'white' ? '2' : '7';
+        final files = ['c', 'd', 'e', 'f']..shuffle(_random);
+        final spawnedSquares = <String>[];
+
+        for (var file in files) {
+          final sq = '$file$targetRank';
+          if (engine.getPiece(sq) == null) {
+            engine.putPiece('p', playerColor, sq);
+            spawnedSquares.add(sq);
+            spawned++;
+            if (spawned >= 2) break;
+          }
+        }
+
+        if (spawned == 0) return PowerupResult(success: false, message: 'No space for Pawn Wall!');
+        return PowerupResult(success: true, message: 'Pawn Wall constructed!', swappedSquares: spawnedSquares);
+
+      case PowerupType.quickStep:
+        if (targetSquare == null) {
+          return PowerupResult(success: false, message: 'Select a pawn!', requiresTarget: true);
+        }
+        final piece = engine.getPiece(targetSquare);
+        if (piece == null || piece.type != ch.PieceType.PAWN) {
+          return PowerupResult(success: false, message: 'Must target a pawn!');
+        }
+        final pColor = piece.color == ch.Color.WHITE ? 'white' : 'black';
+        if (pColor != playerColor) {
+          return PowerupResult(success: false, message: 'Must target YOUR pawn!');
+        }
+        // Mark this pawn for quick step (handled as active effect)
         return PowerupResult(
           success: true,
-          message: 'Enemy attack zones revealed!',
-          highlightSquares: engine.getAttackedSquares(opp),
-          effectDuration: 1,
+          message: 'Pawn can leap 2 squares!',
+          activeEffect: ActiveEffect(
+            type: PowerupType.quickStep,
+            targetSquare: targetSquare,
+            turnsRemaining: 1,
+          ),
+        );
+
+      case PowerupType.minorHeal:
+        final undone = engine.undo();
+        if (undone == null) {
+          return PowerupResult(success: false, message: 'No move to undo!');
+        }
+        return PowerupResult(success: true, message: 'Last move undone — replay!');
+
+      // ── UNCOMMON ──────────────────────────────────────────────────────────
+      case PowerupType.enrage:
+        if (targetSquare == null) {
+          return PowerupResult(success: false, message: 'Select a pawn to enrage!', requiresTarget: true);
+        }
+        final piece = engine.getPiece(targetSquare);
+        if (piece == null || piece.type != ch.PieceType.PAWN) {
+          return PowerupResult(success: false, message: 'Must target a pawn!');
+        }
+        return PowerupResult(
+          success: true,
+          message: 'Pawn enraged — can capture forward!',
+          activeEffect: ActiveEffect(
+            type: PowerupType.enrage,
+            targetSquare: targetSquare,
+            turnsRemaining: 1,
+          ),
         );
 
       case PowerupType.freeze:
@@ -40,13 +177,6 @@ class PowerupEngine {
           success: true,
           message: 'Opponent frozen for 1 turn!',
           activeEffect: ActiveEffect(type: PowerupType.freeze, turnsRemaining: 1),
-        );
-
-      case PowerupType.phantomStep:
-        return PowerupResult(
-          success: true,
-          message: 'Make a bonus non-capture move!',
-          activeEffect: ActiveEffect(type: PowerupType.phantomStep, turnsRemaining: 1),
         );
 
       case PowerupType.holyShield:
@@ -60,8 +190,23 @@ class PowerupEngine {
         );
 
       case PowerupType.purify:
-        return PowerupResult(success: true, message: 'Enemy powerup removed!', removesEnemyPowerup: true);
+        return PowerupResult(success: true, message: 'Enemy power-up removed!', removesEnemyPowerup: true);
 
+      case PowerupType.phantomStep:
+        return PowerupResult(
+          success: true,
+          message: 'Make a bonus non-capture move!',
+          activeEffect: ActiveEffect(type: PowerupType.phantomStep, turnsRemaining: 1),
+        );
+
+      case PowerupType.sabotage:
+        return PowerupResult(
+          success: true,
+          message: 'Enemy power-ups disabled for 2 turns!',
+          activeEffect: ActiveEffect(type: PowerupType.sabotage, turnsRemaining: 2),
+        );
+
+      // ── RARE ──────────────────────────────────────────────────────────────
       case PowerupType.fortress:
         if (targetSquare == null) {
           return PowerupResult(success: false, message: 'Select fortress corner!', requiresTarget: true);
@@ -84,12 +229,45 @@ class PowerupEngine {
           activeEffect: ActiveEffect(type: PowerupType.doubleMove, turnsRemaining: 1),
         );
 
+      case PowerupType.swap:
+        if (targetSquare == null) {
+          return PowerupResult(success: false, message: 'Select first piece to swap!', requiresTarget: true);
+        }
+        // For simplicity, swap with a random friendly non-king piece
+        return _applySwap(engine, playerColor, targetSquare);
+
+      case PowerupType.conscription:
+        if (targetSquare == null) {
+          return PowerupResult(success: false, message: 'Select where to place the pawn!', requiresTarget: true);
+        }
+        // Validate target is in first 2 ranks and empty
+        final rank = int.parse(targetSquare[1]);
+        final isValidRank = playerColor == 'white' ? (rank <= 2) : (rank >= 7);
+        if (!isValidRank) {
+          return PowerupResult(success: false, message: 'Must place in your first 2 ranks!');
+        }
+        if (engine.getPiece(targetSquare) != null) {
+          return PowerupResult(success: false, message: 'Square must be empty!');
+        }
+        engine.putPiece('p', playerColor, targetSquare);
+        return PowerupResult(success: true, message: 'Pawn conscripted at $targetSquare!');
+
+      case PowerupType.exile:
+        if (targetSquare == null) {
+          return PowerupResult(success: false, message: 'Select an enemy piece to exile!', requiresTarget: true);
+        }
+        return _applyExile(engine, playerColor, targetSquare);
+
+      // ── EPIC ──────────────────────────────────────────────────────────────
       case PowerupType.resurrection:
         if (capturedPieces == null || capturedPieces.isEmpty) {
-          return PowerupResult(success: false, message: 'No captured pieces!');
+          return PowerupResult(success: false, message: 'No captured pieces to resurrect!');
         }
         if (targetSquare == null) {
-          return PowerupResult(success: false, message: 'Select empty square!', requiresTarget: true);
+          return PowerupResult(success: false, message: 'Select empty square for resurrection!', requiresTarget: true);
+        }
+        if (engine.getPiece(targetSquare) != null) {
+          return PowerupResult(success: false, message: 'Square must be empty!');
         }
         final piece = capturedPieces.first;
         final placed = engine.putPiece(piece, playerColor, targetSquare);
@@ -105,7 +283,198 @@ class PowerupEngine {
 
       case PowerupType.chaosStorm:
         return _applyChaosStorm(engine);
+
+      case PowerupType.crownThief:
+        if (targetSquare == null) {
+          return PowerupResult(success: false, message: 'Select an enemy queen!', requiresTarget: true);
+        }
+        return _applyCrownThief(engine, playerColor, targetSquare);
+
+      case PowerupType.blackHole:
+        if (targetSquare == null) {
+          return PowerupResult(success: false, message: 'Select the center of the black hole!', requiresTarget: true);
+        }
+        return _applyBlackHole(engine, targetSquare);
+
+      // ── LEGENDARY ─────────────────────────────────────────────────────────
+      case PowerupType.promotionWave:
+        return _applyPromotionWave(engine, playerColor);
+
+      case PowerupType.timeFreeze:
+        return PowerupResult(
+          success: true,
+          message: "Opponent's clock frozen for 60 seconds!",
+          activeEffect: ActiveEffect(type: PowerupType.timeFreeze, turnsRemaining: 6),
+          timePenalty: 60,
+        );
+
+      case PowerupType.mirrorDimension:
+        return PowerupResult(
+          success: true,
+          message: 'Your last move will repeat automatically!',
+          activeEffect: ActiveEffect(type: PowerupType.mirrorDimension, turnsRemaining: 1),
+        );
     }
+  }
+
+  // ── COMPLEX POWERUP IMPLEMENTATIONS ─────────────────────────────────────
+
+  PowerupResult _applySwap(ChessEngine engine, String playerColor, String square1) {
+    final piece1 = engine.getPiece(square1);
+    if (piece1 == null) {
+      return PowerupResult(success: false, message: 'No piece at that square!');
+    }
+    final p1Color = piece1.color == ch.Color.WHITE ? 'white' : 'black';
+    if (p1Color != playerColor) {
+      return PowerupResult(success: false, message: 'Must select your own piece!');
+    }
+    if (piece1.type == ch.PieceType.KING) {
+      return PowerupResult(success: false, message: 'Cannot swap the king!');
+    }
+
+    // Find a random friendly non-king piece to swap with
+    final boardPieces = engine.getBoardPieces();
+    final friendlySquares = boardPieces.entries
+        .where((e) =>
+            e.value.color == playerColor &&
+            e.value.type != 'k' &&
+            e.key != square1)
+        .map((e) => e.key)
+        .toList();
+
+    if (friendlySquares.isEmpty) {
+      return PowerupResult(success: false, message: 'No other piece to swap with!');
+    }
+
+    friendlySquares.shuffle(_random);
+    final square2 = friendlySquares.first;
+
+    final p2 = engine.removePiece(square2);
+    engine.removePiece(square1);
+
+    if (p2 != null) {
+      engine.putPiece(piece1.type.name, p1Color, square2);
+      engine.putPiece(p2.type.name, p1Color, square1);
+    }
+
+    return PowerupResult(
+      success: true,
+      message: 'Pieces swapped!',
+      swappedSquares: [square1, square2],
+    );
+  }
+
+  PowerupResult _applyExile(ChessEngine engine, String playerColor, String targetSquare) {
+    final piece = engine.getPiece(targetSquare);
+    if (piece == null) {
+      return PowerupResult(success: false, message: 'No piece there!');
+    }
+    final pColor = piece.color == ch.Color.WHITE ? 'white' : 'black';
+    if (pColor == playerColor) {
+      return PowerupResult(success: false, message: 'Must target an ENEMY piece!');
+    }
+    if (piece.type == ch.PieceType.KING) {
+      return PowerupResult(success: false, message: 'Cannot exile the king!');
+    }
+
+    // Find empty squares to exile to
+    final boardPieces = engine.getBoardPieces();
+    final allSquares = <String>[];
+    for (int r = 0; r < 8; r++) {
+      for (int c = 0; c < 8; c++) {
+        allSquares.add(gridToSquare(r, c));
+      }
+    }
+    final emptySquares = allSquares.where((s) => !boardPieces.containsKey(s)).toList();
+    if (emptySquares.isEmpty) {
+      return PowerupResult(success: false, message: 'No empty square to exile to!');
+    }
+
+    emptySquares.shuffle(_random);
+    final destination = emptySquares.first;
+
+    engine.removePiece(targetSquare);
+    engine.putPiece(piece.type.name, pColor, destination);
+
+    return PowerupResult(
+      success: true,
+      message: 'Piece exiled to $destination!',
+      swappedSquares: [targetSquare, destination],
+    );
+  }
+
+  PowerupResult _applyCrownThief(ChessEngine engine, String playerColor, String targetSquare) {
+    final piece = engine.getPiece(targetSquare);
+    if (piece == null) {
+      return PowerupResult(success: false, message: 'No piece there!');
+    }
+    if (piece.type != ch.PieceType.QUEEN) {
+      return PowerupResult(success: false, message: 'Must target a queen!');
+    }
+    final pColor = piece.color == ch.Color.WHITE ? 'white' : 'black';
+    if (pColor == playerColor) {
+      return PowerupResult(success: false, message: 'Must target an ENEMY queen!');
+    }
+
+    // Demote queen to bishop
+    engine.removePiece(targetSquare);
+    engine.putPiece('b', pColor, targetSquare);
+
+    return PowerupResult(
+      success: true,
+      message: 'Crown stolen! Queen demoted to bishop for 3 turns!',
+      activeEffect: ActiveEffect(
+        type: PowerupType.crownThief,
+        targetSquare: targetSquare,
+        turnsRemaining: 3,
+        extra: {'originalSquare': targetSquare, 'pieceColor': pColor},
+      ),
+    );
+  }
+
+  PowerupResult _applyBlackHole(ChessEngine engine, String targetSquare) {
+    final zone = _getFortressZone(targetSquare);
+    int destroyed = 0;
+
+    for (final sq in zone) {
+      final piece = engine.getPiece(sq);
+      if (piece != null && piece.type != ch.PieceType.KING) {
+        engine.removePiece(sq);
+        destroyed++;
+      }
+    }
+
+    if (destroyed == 0) {
+      return PowerupResult(success: false, message: 'No pieces in the zone to destroy!');
+    }
+
+    return PowerupResult(
+      success: true,
+      message: 'Black Hole destroyed $destroyed piece${destroyed > 1 ? "s" : ""}!',
+      swappedSquares: zone,
+    );
+  }
+
+  PowerupResult _applyPromotionWave(ChessEngine engine, String playerColor) {
+    final boardPieces = engine.getBoardPieces();
+    int promoted = 0;
+
+    for (final entry in boardPieces.entries) {
+      if (entry.value.type == 'p' && entry.value.color == playerColor) {
+        engine.removePiece(entry.key);
+        engine.putPiece('q', playerColor, entry.key);
+        promoted++;
+      }
+    }
+
+    if (promoted == 0) {
+      return PowerupResult(success: false, message: 'No pawns to promote!');
+    }
+
+    return PowerupResult(
+      success: true,
+      message: 'Promotion Wave! $promoted pawn${promoted > 1 ? "s" : ""} became queens!',
+    );
   }
 
   PowerupResult _applyChaosStorm(ChessEngine engine) {
@@ -147,6 +516,8 @@ class PowerupEngine {
     return PowerupResult(success: true, message: 'Chaos Storm! Pieces swapped!', swappedSquares: swapped);
   }
 
+  // ── HELPERS ─────────────────────────────────────────────────────────────
+
   List<String> _getFortressZone(String topLeft) {
     final (row, col) = squareToGrid(topLeft);
     final zone = <String>[];
@@ -160,6 +531,7 @@ class PowerupEngine {
     return zone;
   }
 
+  /// Tick down active effect durations. Called each half-turn.
   static List<ActiveEffect> tickEffects(List<ActiveEffect> effects) {
     for (var e in effects) {
       e.turnsRemaining--;
@@ -167,12 +539,33 @@ class PowerupEngine {
     effects.removeWhere((e) => e.turnsRemaining <= 0);
     return effects;
   }
+
+  /// Handle Crown Thief expiration: restore the queen.
+  static void handleExpiredEffects(List<ActiveEffect> expired, ChessEngine engine) {
+    for (final e in expired) {
+      if (e.type == PowerupType.crownThief && e.extra.containsKey('originalSquare')) {
+        final sq = e.extra['originalSquare'] as String;
+        final color = e.extra['pieceColor'] as String? ?? 'black';
+        final currentPiece = engine.getPiece(sq);
+        // Only restore if the bishop is still there (hasn't been captured)
+        if (currentPiece != null && currentPiece.type == ch.PieceType.BISHOP) {
+          engine.removePiece(sq);
+          engine.putPiece('q', color, sq);
+        }
+      }
+    }
+  }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POWERUP RESULT
+// ─────────────────────────────────────────────────────────────────────────────
 
 class PowerupResult {
   final bool success;
   final String message;
   final int timeBonus;
+  final int timePenalty; // Applied to opponent
   final List<String>? highlightSquares;
   final List<String>? swappedSquares;
   final ActiveEffect? activeEffect;
@@ -186,6 +579,7 @@ class PowerupResult {
     required this.success,
     required this.message,
     this.timeBonus = 0,
+    this.timePenalty = 0,
     this.highlightSquares,
     this.swappedSquares,
     this.activeEffect,

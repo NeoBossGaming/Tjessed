@@ -7,11 +7,13 @@ import 'screens/login_screen.dart';
 import 'screens/lobby_screen.dart';
 import 'utils/constants.dart';
 import 'widgets/loading_indicator.dart';
+import 'services/settings_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await SettingsService().init();
 
   runApp(const MasterChessApp());
 }

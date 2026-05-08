@@ -109,10 +109,10 @@ class VfxPainter extends CustomPainter {
 
   void _paintFortress(Canvas canvas, List<String> squares, double sq) {
     final fillPaint = Paint()
-      ..color = AppColors.tier3.withAlpha(76)
+      ..color = AppColors.tierRare.withAlpha(76)
       ..style = PaintingStyle.fill;
     final linePaint = Paint()
-      ..color = AppColors.tier3.withAlpha(51)
+      ..color = AppColors.tierRare.withAlpha(51)
       ..strokeWidth = 1;
 
     for (var s in squares) {

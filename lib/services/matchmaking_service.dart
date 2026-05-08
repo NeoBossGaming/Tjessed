@@ -8,8 +8,10 @@ import '../utils/constants.dart';
 class MatchmakingService {
   final FirebaseDatabase _db = FirebaseDatabase.instance;
   final Uuid _uuid = const Uuid();
-  
+
   StreamSubscription? _queueSubscription;
+  Timer? _searchTimer;
+  bool _isSearching = false;
 
   /// Join the matchmaking queue
   Future<void> joinQueue(PlayerModel player) async {
@@ -18,7 +20,7 @@ class MatchmakingService {
       'Elo': player.elo,
       'Timestamp': ServerValue.timestamp,
       'Username': player.username,
-      'Status': 'searching'
+      'Status': 'searching',
     });
 
     // Handle disconnecting while in queue
@@ -27,11 +29,19 @@ class MatchmakingService {
 
   /// Leave the matchmaking queue
   Future<void> leaveQueue(String uid) async {
+    _isSearching = false;
     _queueSubscription?.cancel();
-    await _db.ref('Matchmaking/$uid').remove();
+    _queueSubscription = null;
+    _searchTimer?.cancel();
+    _searchTimer = null;
+    try {
+      await _db.ref('Matchmaking/$uid').remove();
+    } catch (e) {
+      debugPrint('Error leaving queue: $e');
+    }
   }
 
-  /// Listen for a match
+  /// Listen for a match — waits for MatchId to appear on our node
   Stream<String?> listenForMatch(String uid) {
     return _db.ref('Matchmaking/$uid/MatchId').onValue.map((event) {
       if (event.snapshot.exists && event.snapshot.value != null) {
@@ -43,99 +53,160 @@ class MatchmakingService {
 
   /// Periodically check for opponents in the queue
   void startSearching(PlayerModel player) {
+    _isSearching = true;
     int searchRadius = GameConstants.eloMatchRange;
-    int searchStartTime = DateTime.now().millisecondsSinceEpoch;
+    final searchStartTime = DateTime.now();
 
-    _queueSubscription = Stream.periodic(const Duration(seconds: 3)).listen((_) async {
+    // Auto-cancel after 60 seconds to prevent zombie searches
+    _searchTimer = Timer(const Duration(seconds: 60), () {
+      debugPrint('Matchmaking timed out after 60 seconds');
+      _isSearching = false;
+      _queueSubscription?.cancel();
+      _queueSubscription = null;
+    });
+
+    _queueSubscription =
+        Stream.periodic(const Duration(seconds: 2)).listen((_) async {
+      if (!_isSearching) {
+        _queueSubscription?.cancel();
+        return;
+      }
+
       // Expand search radius if taking too long
-      int elapsed = DateTime.now().millisecondsSinceEpoch - searchStartTime;
-      if (elapsed > GameConstants.matchmakingTimeoutSeconds * 1000) {
+      final elapsed = DateTime.now().difference(searchStartTime).inSeconds;
+      if (elapsed > GameConstants.matchmakingTimeoutSeconds) {
         searchRadius = GameConstants.eloMatchExpandedRange;
       }
 
-      DataSnapshot queueSnap = await _db.ref('Matchmaking').get();
-      if (!queueSnap.exists) return;
+      try {
+        DataSnapshot queueSnap = await _db.ref('Matchmaking').get();
+        if (!queueSnap.exists || queueSnap.value == null) return;
 
-      Map<dynamic, dynamic> queue = queueSnap.value as Map<dynamic, dynamic>;
-      
-      String? bestOpponentId;
-      int minEloDiff = 9999;
+        // Guard: value might not be a Map (e.g., if only one entry exists
+        // and the node is structured oddly)
+        if (queueSnap.value is! Map) return;
 
-      for (var entry in queue.entries) {
-        String oppId = entry.key;
-        if (oppId == player.uid) continue;
+        Map<dynamic, dynamic> queue =
+            queueSnap.value as Map<dynamic, dynamic>;
 
-        Map<dynamic, dynamic> oppData = entry.value;
-        if (oppData['Status'] != 'searching') continue;
+        String? bestOpponentId;
+        int minEloDiff = 9999;
 
-        int oppElo = oppData['Elo'] as int? ?? 1500;
-        int eloDiff = (player.elo - oppElo).abs();
+        for (var entry in queue.entries) {
+          String oppId = entry.key.toString();
+          if (oppId == player.uid) continue;
 
-        if (eloDiff <= searchRadius && eloDiff < minEloDiff) {
-          minEloDiff = eloDiff;
-          bestOpponentId = oppId;
+          // Guard: entry value might not be a Map
+          if (entry.value is! Map) continue;
+          Map<dynamic, dynamic> oppData = entry.value as Map<dynamic, dynamic>;
+
+          // Staleness check: skip entries that haven't been updated for > 30s
+          int? oppTimestamp = oppData['Timestamp'] as int?;
+          if (oppTimestamp != null) {
+            int now = DateTime.now().millisecondsSinceEpoch;
+            // Note: ServerValue.timestamp and local time might drift, but 30s is a safe margin
+            if ((now - oppTimestamp).abs() > 30000) {
+              continue; 
+            }
+          }
+
+          // Only match with players who are still searching
+          if (oppData['Status'] != 'searching') continue;
+
+          int oppElo = oppData['Elo'] as int? ?? 1500;
+          int eloDiff = (player.elo - oppElo).abs();
+
+          if (eloDiff <= searchRadius && eloDiff < minEloDiff) {
+            minEloDiff = eloDiff;
+            bestOpponentId = oppId;
+          }
         }
-      }
 
-      if (bestOpponentId != null) {
-        // Found an opponent, attempt to create match
-        await _createMatch(player.uid, bestOpponentId);
+        if (bestOpponentId != null) {
+          // KEY FIX: Only the player whose UID sorts first creates the match.
+          // The other player waits for MatchId via listenForMatch().
+          // This prevents both players from racing to create the same match.
+          if (player.uid.compareTo(bestOpponentId) < 0) {
+            debugPrint(
+                'I am the match creator (${player.uid} < $bestOpponentId)');
+            await _createMatch(player.uid, bestOpponentId);
+          } else {
+            debugPrint(
+                'Waiting for opponent to create match ($bestOpponentId < ${player.uid})');
+            // Do nothing — the other player will create the match
+            // and our listenForMatch() stream will pick it up.
+          }
+        }
+      } catch (e) {
+        debugPrint('[MATCHMAKING] Search error: $e');
       }
     });
   }
 
   Future<void> _createMatch(String player1, String player2) async {
+    debugPrint('[MATCHMAKING] _createMatch called: $player1 vs $player2');
+    // Stop searching immediately
+    _isSearching = false;
     _queueSubscription?.cancel();
+    _queueSubscription = null;
+    _searchTimer?.cancel();
+    _searchTimer = null;
 
-    // Use transaction to avoid race conditions
-    DatabaseReference mRef = _db.ref('Matchmaking');
-    
-    bool success = false;
     String matchId = _uuid.v4();
 
     try {
-      await mRef.runTransaction((Object? value) {
-        // Firebase might call this with null initially even if data exists on the server.
-        // We should return success(value) to allow it to retry with actual data.
+      debugPrint('[MATCHMAKING] Initiating transaction on opponent node: Matchmaking/$player2');
+      // 1. Transaction only on opponent's node to prevent root null locks
+      DatabaseReference oppRef = _db.ref('Matchmaking/$player2');
+      
+      final result = await oppRef.runTransaction((Object? value) {
+        debugPrint('[MATCHMAKING] Transaction callback triggered. Value: $value');
         if (value == null) {
-          return Transaction.success(value);
+           debugPrint('[MATCHMAKING] Opponent node is null. Aborting to prevent data wipe.');
+           return Transaction.abort();
         }
-        
-        Map<dynamic, dynamic> queue;
-        try {
-          queue = Map<dynamic, dynamic>.from(value as Map);
-        } catch (e) {
-          debugPrint('Transaction failed: Invalid queue data format');
-          return Transaction.abort();
-        }
-        
-        // Ensure both players are still in queue and searching
-        if (!queue.containsKey(player1) || !queue.containsKey(player2)) {
-          debugPrint('Transaction failed: One or both players left the queue');
-          return Transaction.abort();
-        }
-        
-        var p1Data = queue[player1] as Map?;
-        var p2Data = queue[player2] as Map?;
-
-        if (p1Data == null || p2Data == null || 
-            p1Data['Status'] != 'searching' || p2Data['Status'] != 'searching') {
-          debugPrint('Transaction failed: Players are no longer searching');
+        if (value is! Map) {
+          debugPrint('[MATCHMAKING] Opponent node is not a Map. Aborting.');
           return Transaction.abort();
         }
 
-        // Lock them
-        p1Data['Status'] = 'matched';
-        p2Data['Status'] = 'matched';
-        p1Data['MatchId'] = matchId;
-        p2Data['MatchId'] = matchId;
+        Map<dynamic, dynamic> data = Map<dynamic, dynamic>.from(value);
+        if (data['Status'] != 'searching') {
+          debugPrint('[MATCHMAKING] Opponent status is ${data['Status']}, not searching. Aborting.');
+          return Transaction.abort();
+        }
 
-        success = true;
-        return Transaction.success(queue);
+        data['Status'] = 'matched';
+        data['MatchId'] = matchId;
+        debugPrint('[MATCHMAKING] Transaction logic succeeding, returning new data.');
+        return Transaction.success(data);
       });
 
-      if (success) {
-        // Initialize the match record
+      debugPrint('[MATCHMAKING] Transaction finished. Committed: ${result.committed}');
+      
+      // If result was successful but value was null, it means it returned null and committed the null, wiping out the node.
+      // But we returned success(value) when null. If it was truly null on the server, it committed null (did nothing).
+      // We must check if we actually wrote the 'matched' status.
+      bool lockedOpponent = false;
+      if (result.committed && result.snapshot.value is Map) {
+        final snapData = result.snapshot.value as Map;
+        if (snapData['MatchId'] == matchId) {
+           lockedOpponent = true;
+        }
+      }
+
+      if (lockedOpponent) {
+        debugPrint('[MATCHMAKING] Successfully locked opponent. Creating match: $matchId');
+
+        // 2. Update my own status
+        await _db.ref('Matchmaking/$player1').update({
+          'Status': 'matched',
+          'MatchId': matchId,
+        });
+
+        debugPrint('[MATCHMAKING] Updated my own status to matched.');
+
+        // 3. Initialize the match record
         await _db.ref('Matches/$matchId').set({
           "Black Player ID": player2,
           "White Player ID": player1,
@@ -147,16 +218,30 @@ class MatchmakingService {
           "WonBy": "",
           "Mode": "powerup",
           "Powerups": {
-            "White": {"held": [], "active": {}},
-            "Black": {"held": [], "active": {}}
+            "White": {"held": [], "active": []},
+            "Black": {"held": [], "active": []},
           },
           "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
           "Turn": "white",
-          "MoveCount": 0
+          "MoveCount": 0,
         });
+        
+        debugPrint('[MATCHMAKING] Initialized match data in Matches/$matchId.');
+
+        // Clean up matchmaking entries after match is created
+        Future.delayed(const Duration(seconds: 3), () {
+          debugPrint('[MATCHMAKING] Cleaning up Matchmaking nodes for $player1 and $player2.');
+          _db.ref('Matchmaking/$player1').remove();
+          _db.ref('Matchmaking/$player2').remove();
+        });
+      } else {
+        debugPrint('[MATCHMAKING] Match transaction was not committed — opponent unavailable');
+        // Re-enter searching state
+        _isSearching = true;
       }
     } catch (e) {
-      debugPrint('Match creation failed: $e');
+      debugPrint('[MATCHMAKING] Match creation failed: $e');
+      _isSearching = true;
     }
   }
 }

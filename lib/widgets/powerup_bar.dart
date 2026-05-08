@@ -1,8 +1,8 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../models/powerup.dart';
 import '../utils/constants.dart';
-import 'glass_container.dart';
+import 'card_widget.dart';
 
 class PowerupBar extends StatelessWidget {
   final List<PowerupType> heldPowerups;
@@ -16,148 +16,119 @@ class PowerupBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassContainer(
-      opacity: 0.1,
-      padding: const EdgeInsets.all(12),
-      borderRadius: AppDimensions.borderRadius,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: List.generate(GameConstants.maxPowerupsHeld, (index) {
-          if (index < heldPowerups.length) {
-            final p = heldPowerups[index];
-            return _PowerupCard(
-              p: p,
-              isMyTurn: isMyTurn,
-            );
-          }
-          return _buildEmptySlot();
-        }),
-      ),
-    );
-  }
-
-  Widget _buildEmptySlot() {
+    const double cardWidth = 80;
+    const double cardHeight = 110;
+    
     return Container(
-      width: 64,
-      height: 84,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSmall),
-        color: AppColors.surfaceLight.withAlpha(30),
-        border: Border.all(
-          color: AppColors.textMuted.withAlpha(50),
-          width: 1.5,
-          style: BorderStyle.solid,
-        ),
-      ),
-      child: Center(
-        child: Icon(
-          Icons.add,
-          color: AppColors.textMuted.withAlpha(80),
-        ),
+      height: cardHeight + 40,
+      width: double.infinity,
+      alignment: Alignment.bottomCenter,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.bottomCenter,
+        children: [
+          // Background slots (optional, could just show nothing if empty)
+          if (heldPowerups.isEmpty)
+             Text(
+               'CAPTURE PIECES TO EARN POWER-UPS',
+               style: AppTextStyles.caption.copyWith(color: AppColors.textMuted),
+             ),
+          
+          // Fanned cards
+          ...List.generate(heldPowerups.length, (index) {
+            final p = heldPowerups[index];
+            return _FannedCard(
+              index: index,
+              total: heldPowerups.length,
+              cardWidth: cardWidth,
+              cardHeight: cardHeight,
+              child: CardWidget(
+                powerup: p,
+                isMyTurn: isMyTurn,
+                width: cardWidth,
+                height: cardHeight,
+              ),
+              onDragged: (type) {
+                // The parent (GameScreen) handles the DragTarget logic
+              },
+            );
+          }),
+        ],
       ),
     );
   }
 }
 
-class _PowerupCard extends StatefulWidget {
-  final PowerupType p;
-  final bool isMyTurn;
+class _FannedCard extends StatefulWidget {
+  final int index;
+  final int total;
+  final double cardWidth;
+  final double cardHeight;
+  final Widget child;
+  final Function(PowerupType) onDragged;
 
-  const _PowerupCard({
-    required this.p,
-    required this.isMyTurn,
+  const _FannedCard({
+    required this.index,
+    required this.total,
+    required this.cardWidth,
+    required this.cardHeight,
+    required this.child,
+    required this.onDragged,
   });
 
   @override
-  State<_PowerupCard> createState() => _PowerupCardState();
+  State<_FannedCard> createState() => _FannedCardState();
 }
 
-class _PowerupCardState extends State<_PowerupCard> {
+class _FannedCardState extends State<_FannedCard> {
   bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final card = _buildCardContent(isDragging: false);
+    // Calculate rotation and offset for the fan effect
+    final double spreadAngle = 12.0; // Total degrees to spread
+    final double angleStep = widget.total > 1 ? spreadAngle / (widget.total - 1) : 0;
+    final double startAngle = -(spreadAngle / 2);
+    final double currentAngle = startAngle + (widget.index * angleStep);
+    
+    // Convert degrees to radians for Transform
+    final double radians = currentAngle * (math.pi / 180);
+    
+    // Horizontal offset to space them out even while fanned
+    final double xOffset = (widget.index - (widget.total - 1) / 2) * (widget.cardWidth * 0.6);
+    
+    // Vertical offset to create the "arc" effect
+    final double yArc = math.pow((widget.index - (widget.total - 1) / 2), 2) * 5.0;
 
-    return Tooltip(
-      message: "${widget.p.name}\n${widget.p.description}",
-      textStyle: AppTextStyles.bodySmall.copyWith(color: AppColors.background, fontWeight: FontWeight.bold),
-      decoration: BoxDecoration(
-        color: widget.p.tier.color.withAlpha(240),
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSmall),
-      ),
+    return Positioned(
+      bottom: _isHovered ? 25 : 10,
+      left: (MediaQuery.of(context).size.width / 2) - (widget.cardWidth / 2) + xOffset,
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
-        cursor: widget.isMyTurn ? SystemMouseCursors.grab : SystemMouseCursors.basic,
-        child: Draggable<PowerupType>(
-          data: widget.p,
-          maxSimultaneousDrags: widget.isMyTurn ? 1 : 0,
-          feedback: Material(
-            color: Colors.transparent,
-            child: _buildCardContent(isDragging: true),
-          ),
-          childWhenDragging: Opacity(
-            opacity: 0.3,
-            child: card,
-          ),
-          child: AnimatedScale(
-            scale: _isHovered ? 1.15 : 1.0,
-            duration: 200.ms,
-            curve: Curves.easeOutBack,
-            child: card,
+        child: Transform.rotate(
+          angle: radians,
+          child: Transform.translate(
+            offset: Offset(0, yArc),
+            child: Draggable<PowerupType>(
+              data: (widget.child as CardWidget).powerup,
+              feedback: Material(
+                color: Colors.transparent,
+                child: CardWidget(
+                  powerup: (widget.child as CardWidget).powerup,
+                  isMyTurn: true,
+                  width: widget.cardWidth * 1.2,
+                  height: widget.cardHeight * 1.2,
+                  isDragging: true,
+                ),
+              ),
+              childWhenDragging: const SizedBox.shrink(),
+              child: widget.child,
+            ),
           ),
         ),
       ),
     );
   }
-
-  Widget _buildCardContent({required bool isDragging}) {
-    return Container(
-      width: 64,
-      height: 84,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSmall),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            widget.p.tier.color.withAlpha(isDragging ? 100 : 60),
-            widget.p.tier.color.withAlpha(isDragging ? 60 : 30),
-          ],
-        ),
-        border: Border.all(
-          color: widget.p.tier.color.withAlpha(isDragging || _isHovered ? 255 : 150),
-          width: (isDragging || _isHovered) ? 2.5 : 1.5,
-        ),
-        boxShadow: (widget.isMyTurn || _isHovered || isDragging) ? [
-          BoxShadow(
-            color: widget.p.tier.color.withAlpha(isDragging ? 200 : (_isHovered ? 150 : 80)),
-            blurRadius: isDragging ? 30 : (_isHovered ? 20 : 10),
-            spreadRadius: isDragging ? 5 : 2,
-          )
-        ] : null,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            widget.p.icon,
-            color: widget.p.tier.color,
-            size: isDragging ? 38 : 32,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            widget.p.tier.label.toUpperCase(),
-            style: AppTextStyles.caption.copyWith(
-              color: widget.p.tier.color,
-              fontSize: 9,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    ).animate(target: widget.isMyTurn && !isDragging ? 1 : 0)
-     .shimmer(duration: 2.seconds, color: Colors.white.withAlpha(100));
-  }
 }
+

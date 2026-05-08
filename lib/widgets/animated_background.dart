@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import '../utils/constants.dart';
 
 class AnimatedBackground extends StatefulWidget {
   final Widget child;
@@ -24,13 +25,18 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
     _ctrl.dispose();
     super.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
         Container(
-          color: const Color(0xFF070B19), // Deep background
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppColors.background, AppColors.backgroundEnd],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
         ),
         AnimatedBuilder(
           animation: _ctrl,
@@ -53,23 +59,26 @@ class FloatingShapesPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint1 = Paint()
-      ..color = const Color(0xFF00E5FF).withAlpha(15)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 50);
+    final colors = [
+      AppColors.accentCyan.withAlpha(20),
+      AppColors.accentPink.withAlpha(20),
+      AppColors.accentPurple.withAlpha(20),
+      AppColors.accentAmber.withAlpha(20),
+    ];
+    
+    final radius = size.width * 0.6;
+
+    for (int i = 0; i < colors.length; i++) {
+      final paint = Paint()
+        ..color = colors[i]
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.2);
+
+      final double angle = (time * math.pi * 2) + (i * math.pi / 2);
+      final double cx = size.width / 2 + math.sin(angle) * (size.width * 0.3);
+      final double cy = size.height / 2 + math.cos(angle * 0.8) * (size.height * 0.2);
       
-    final paint2 = Paint()
-      ..color = const Color(0xFFB000FF).withAlpha(15)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 80);
-
-    // Shape 1
-    final cx1 = size.width * 0.2 + math.sin(time * math.pi * 2) * size.width * 0.2;
-    final cy1 = size.height * 0.3 + math.cos(time * math.pi * 2) * size.height * 0.2;
-    canvas.drawCircle(Offset(cx1, cy1), size.width * 0.4, paint1);
-
-    // Shape 2
-    final cx2 = size.width * 0.8 + math.cos(time * math.pi * 2) * size.width * 0.15;
-    final cy2 = size.height * 0.7 + math.sin(time * math.pi * 2) * size.height * 0.25;
-    canvas.drawCircle(Offset(cx2, cy2), size.width * 0.5, paint2);
+      canvas.drawCircle(Offset(cx, cy), radius, paint);
+    }
   }
 
   @override
