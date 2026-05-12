@@ -1,113 +1,77 @@
-import 'dart:math';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import '../utils/constants.dart';
 import 'chess_engine.dart';
 import '../models/powerup.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AI ENGINE - Minimax with Alpha-Beta pruning + Basic Powerup Heuristics
+// AI ENGINE - Stockfish API Integration
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AIEngine {
-  final Random _random = Random();
   final int _maxDepth;
+  static const String _apiBase = 'https://stockfish.online/api/s/v2.php';
 
   AIEngine({int depth = GameConstants.aiMediumDepth}) : _maxDepth = depth;
 
-  /// Get the best move for the current position
-  ChessMoveResult? getBestMove(ChessEngine engine) {
-    List<_ScoredMove> candidates = [];
+  /// Get the best move for the current position from Stockfish API
+  Future<ChessMoveResult?> getBestMove(ChessEngine engine) async {
+    try {
+      final fen = Uri.encodeComponent(engine.fen);
+      // Map GameConstants depth to Stockfish depth (roughly)
+      int stockfishDepth = _maxDepth * 3; // Easy(2)->6, Medium(3)->9, Hard(4)->12
+      
+      final url = '$_apiBase?fen=$fen&depth=$stockfishDepth';
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
 
-    for (var move in engine.getLegalMoves()) {
-      engine.makeMove(move.fromAlgebraic, move.toAlgebraic);
-
-      int score = _minimax(
-        engine,
-        _maxDepth - 1,
-        -100000,
-        100000,
-        !engine.isWhiteTurn,
-      );
-
-      engine.undo();
-      candidates.add(_ScoredMove(move.fromAlgebraic, move.toAlgebraic, score));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          final String bestMove = data['bestmove'] ?? '';
+          if (bestMove.isNotEmpty && bestMove.contains('bestmove ')) {
+            // Format is "bestmove e2e4 ponder ..."
+            final parts = bestMove.split(' ');
+            if (parts.length >= 2) {
+              final moveStr = parts[1];
+              return ChessMoveResult(
+                from: moveStr.substring(0, 2),
+                to: moveStr.substring(2, 4),
+              );
+            }
+          } else if (data['data'] != null) {
+             // Some versions return "bestmove e2e4" in 'data'
+             final String d = data['data'];
+             final parts = d.split(' ');
+             final moveStr = parts.last;
+             return ChessMoveResult(
+                from: moveStr.substring(0, 2),
+                to: moveStr.substring(2, 4),
+              );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('AI Error: $e');
     }
 
-    if (candidates.isEmpty) return null;
-
-    // Sort: white maximises, black minimises
-    candidates.sort((a, b) =>
-        engine.isWhiteTurn ? b.score - a.score : a.score - b.score);
-
-    // Add small random noise among top moves to vary play
-    int topScore = candidates.first.score;
-    List<_ScoredMove> topMoves =
-        candidates.where((c) => (c.score - topScore).abs() < 30).toList();
-    topMoves.shuffle(_random);
-
-    return ChessMoveResult(from: topMoves.first.from, to: topMoves.first.to);
+    // Fallback: If API fails, use a random legal move
+    final moves = engine.getLegalMoves();
+    if (moves.isEmpty) return null;
+    final m = moves[DateTime.now().millisecond % moves.length];
+    return ChessMoveResult(from: m.fromAlgebraic, to: m.toAlgebraic);
   }
 
   /// AI decides whether to use a powerup — basic heuristic
   PowerupType? decidePowerupUsage(List<PowerupType> held, ChessEngine engine) {
     if (held.isEmpty) return null;
-    if (_random.nextDouble() < 0.20) {
+    // Lowered random chance to make it feel more "intelligent" and less spammy
+    if (DateTime.now().millisecond % 100 < 15) {
       held.sort((a, b) => b.tier.level.compareTo(a.tier.level));
       var usable = held.where((p) => !p.isTargeted).toList();
       if (usable.isNotEmpty) return usable.first;
     }
     return null;
-  }
-
-  // ── Private ──────────────────────────────────────────────────────────────────
-
-  int _minimax(ChessEngine engine, int depth, int alpha, int beta, bool isMax) {
-    if (depth == 0 || engine.gameOver) return _evaluate(engine);
-
-    List moves = engine.getLegalMoves();
-    if (moves.isEmpty) {
-      return engine.inCheck ? (isMax ? -99999 : 99999) : 0;
-    }
-
-    if (isMax) {
-      int best = -100000;
-      for (var m in moves) {
-        engine.makeMove(m.fromAlgebraic, m.toAlgebraic);
-        int eval = _minimax(engine, depth - 1, alpha, beta, false);
-        engine.undo();
-        if (eval > best) best = eval;
-        if (eval > alpha) alpha = eval;
-        if (beta <= alpha) break;
-      }
-      return best;
-    } else {
-      int best = 100000;
-      for (var m in moves) {
-        engine.makeMove(m.fromAlgebraic, m.toAlgebraic);
-        int eval = _minimax(engine, depth - 1, alpha, beta, true);
-        engine.undo();
-        if (eval < best) best = eval;
-        if (eval < beta) beta = eval;
-        if (beta <= alpha) break;
-      }
-      return best;
-    }
-  }
-
-  int _evaluate(ChessEngine engine) {
-    int score = 0;
-    for (var piece in engine.getBoardPieces().values) {
-      int val = GameConstants.pieceValues[piece.type] ?? 0;
-      int pos = _positionBonus(piece.square);
-      score += piece.color == 'white' ? val + pos : -(val + pos);
-    }
-    return score;
-  }
-
-  int _positionBonus(String square) {
-    int file = square.codeUnitAt(0) - 'a'.codeUnitAt(0);
-    int rank = 8 - int.parse(square[1]);
-    double dist = (rank - 3.5).abs() + (file - 3.5).abs();
-    return ((7.0 - dist) * 2).toInt();
   }
 }
 
@@ -115,11 +79,4 @@ class ChessMoveResult {
   final String from;
   final String to;
   const ChessMoveResult({required this.from, required this.to});
-}
-
-class _ScoredMove {
-  final String from;
-  final String to;
-  final int score;
-  const _ScoredMove(this.from, this.to, this.score);
 }

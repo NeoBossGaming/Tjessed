@@ -100,12 +100,12 @@ class MatchmakingService {
           if (entry.value is! Map) continue;
           Map<dynamic, dynamic> oppData = entry.value as Map<dynamic, dynamic>;
 
-          // Staleness check: skip entries that haven't been updated for > 30s
+        // Staleness check: skip entries that haven't been updated for > 2 mins
           int? oppTimestamp = oppData['Timestamp'] as int?;
           if (oppTimestamp != null) {
             int now = DateTime.now().millisecondsSinceEpoch;
-            // Note: ServerValue.timestamp and local time might drift, but 30s is a safe margin
-            if ((now - oppTimestamp).abs() > 30000) {
+            // Increased margin to 2 minutes to handle clock drift
+            if ((now - oppTimestamp).abs() > 120000) {
               continue; 
             }
           }
@@ -123,18 +123,10 @@ class MatchmakingService {
         }
 
         if (bestOpponentId != null) {
-          // KEY FIX: Only the player whose UID sorts first creates the match.
-          // The other player waits for MatchId via listenForMatch().
-          // This prevents both players from racing to create the same match.
           if (player.uid.compareTo(bestOpponentId) < 0) {
-            debugPrint(
-                'I am the match creator (${player.uid} < $bestOpponentId)');
-            await _createMatch(player.uid, bestOpponentId);
-          } else {
-            debugPrint(
-                'Waiting for opponent to create match ($bestOpponentId < ${player.uid})');
-            // Do nothing — the other player will create the match
-            // and our listenForMatch() stream will pick it up.
+            String oppName = queue[bestOpponentId]?['Username'] ?? 'Opponent';
+            debugPrint('[MATCHMAKING] I am the creator: ${player.uid} vs $bestOpponentId ($oppName)');
+            await _createMatch(player, bestOpponentId, oppName);
           }
         }
       } catch (e) {
@@ -143,9 +135,7 @@ class MatchmakingService {
     });
   }
 
-  Future<void> _createMatch(String player1, String player2) async {
-    debugPrint('[MATCHMAKING] _createMatch called: $player1 vs $player2');
-    // Stop searching immediately
+  Future<void> _createMatch(PlayerModel player1, String player2, String player2Name) async {
     _isSearching = false;
     _queueSubscription?.cancel();
     _queueSubscription = null;
@@ -153,66 +143,49 @@ class MatchmakingService {
     _searchTimer = null;
 
     String matchId = _uuid.v4();
+    debugPrint('[MATCHMAKING] Creating match $matchId for ${player1.uid} and $player2');
 
     try {
-      debugPrint('[MATCHMAKING] Initiating transaction on opponent node: Matchmaking/$player2');
-      // 1. Transaction only on opponent's node to prevent root null locks
       DatabaseReference oppRef = _db.ref('Matchmaking/$player2');
       
       final result = await oppRef.runTransaction((Object? value) {
-        debugPrint('[MATCHMAKING] Transaction callback triggered. Value: $value');
+        // Handle the initial null when local cache is empty
         if (value == null) {
-           debugPrint('[MATCHMAKING] Opponent node is null. Aborting to prevent data wipe.');
-           return Transaction.abort();
+           return Transaction.success(value);
         }
-        if (value is! Map) {
-          debugPrint('[MATCHMAKING] Opponent node is not a Map. Aborting.');
-          return Transaction.abort();
-        }
+        
+        if (value is! Map) return Transaction.abort();
 
         Map<dynamic, dynamic> data = Map<dynamic, dynamic>.from(value);
         if (data['Status'] != 'searching') {
-          debugPrint('[MATCHMAKING] Opponent status is ${data['Status']}, not searching. Aborting.');
           return Transaction.abort();
         }
 
         data['Status'] = 'matched';
         data['MatchId'] = matchId;
-        debugPrint('[MATCHMAKING] Transaction logic succeeding, returning new data.');
         return Transaction.success(data);
       });
 
-      debugPrint('[MATCHMAKING] Transaction finished. Committed: ${result.committed}');
-      
-      // If result was successful but value was null, it means it returned null and committed the null, wiping out the node.
-      // But we returned success(value) when null. If it was truly null on the server, it committed null (did nothing).
-      // We must check if we actually wrote the 'matched' status.
-      bool lockedOpponent = false;
       if (result.committed && result.snapshot.value is Map) {
         final snapData = result.snapshot.value as Map;
         if (snapData['MatchId'] == matchId) {
-           lockedOpponent = true;
-        }
-      }
-
-      if (lockedOpponent) {
-        debugPrint('[MATCHMAKING] Successfully locked opponent. Creating match: $matchId');
-
-        // 2. Update my own status
-        await _db.ref('Matchmaking/$player1').update({
-          'Status': 'matched',
-          'MatchId': matchId,
-        });
+          // Successfully locked opponent
+          await _db.ref('Matchmaking/${player1.uid}').update({
+            'Status': 'matched',
+            'MatchId': matchId,
+          });
 
         debugPrint('[MATCHMAKING] Updated my own status to matched.');
 
         // 3. Initialize the match record
         await _db.ref('Matches/$matchId').set({
-          "Black Player ID": player2,
-          "White Player ID": player1,
-          "Game Status": "Active",
+          "BlackID": player2,
+          "BlackName": player2Name,
+          "WhiteID": player1.uid,
+          "WhiteName": player1.username,
+          "GameStatus": "Active",
           "Moves": "",
-          "Time Started": DateTime.now().toIso8601String(),
+          "TimeStarted": DateTime.now().toIso8601String(),
           "TimeLeftBlack": GameConstants.defaultTimeSeconds,
           "TimeLeftWhite": GameConstants.defaultTimeSeconds,
           "WonBy": "",
@@ -230,18 +203,22 @@ class MatchmakingService {
 
         // Clean up matchmaking entries after match is created
         Future.delayed(const Duration(seconds: 3), () {
-          debugPrint('[MATCHMAKING] Cleaning up Matchmaking nodes for $player1 and $player2.');
-          _db.ref('Matchmaking/$player1').remove();
+          debugPrint('[MATCHMAKING] Cleaning up Matchmaking nodes for ${player1.uid} and $player2.');
+          _db.ref('Matchmaking/${player1.uid}').remove();
           _db.ref('Matchmaking/$player2').remove();
         });
       } else {
         debugPrint('[MATCHMAKING] Match transaction was not committed — opponent unavailable');
-        // Re-enter searching state
-        _isSearching = true;
+        // Restart searching properly since the stream was cancelled
+        startSearching(player1);
       }
-    } catch (e) {
-      debugPrint('[MATCHMAKING] Match creation failed: $e');
-      _isSearching = true;
+    } else {
+      debugPrint('[MATCHMAKING] Transaction failed or snapshot empty');
+      startSearching(player1);
     }
+  } catch (e) {
+    debugPrint('[MATCHMAKING] Match creation failed: $e');
+    startSearching(player1);
   }
+}
 }

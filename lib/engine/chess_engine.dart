@@ -5,6 +5,15 @@ import '../models/powerup.dart';
 // CHESS ENGINE - Wraps chess 0.7.0 with powerup-aware logic
 // ─────────────────────────────────────────────────────────────────────────────
 
+class EngineMove {
+  final String from;
+  final String to;
+  final dynamic captured;
+  
+  EngineMove({required this.from, required this.to, this.captured});
+}
+
+
 class ChessEngine {
   ch.Chess _game;
 
@@ -47,14 +56,52 @@ class ChessEngine {
 
   /// Returns only the destination squares for a piece at [fromSquare].
   List<String> getLegalDestinations(String fromSquare, {List<ActiveEffect>? activeEffects}) {
-    return getLegalMoves(fromSquare: fromSquare, activeEffects: activeEffects)
+    List<String> dests = getLegalMoves(fromSquare: fromSquare, activeEffects: activeEffects)
         .map((m) => m.toAlgebraic)
         .toList();
+        
+    if (activeEffects != null) {
+      for (var effect in activeEffects) {
+        if (effect.type == PowerupType.quickStep && effect.targetSquare == fromSquare) {
+          // Pawn moves 2 squares forward
+          ch.Piece? p = getPiece(fromSquare);
+          if (p != null && p.type == ch.PieceType.PAWN) {
+            int dir = p.color == ch.Color.WHITE ? 1 : -1;
+            int rank = int.parse(fromSquare[1]);
+            String file = fromSquare[0];
+            int newRank = rank + 2 * dir;
+            if (newRank >= 1 && newRank <= 8) {
+              String sq2 = '$file$newRank';
+              if (getPiece(sq2) == null) { // Quick Step allows leaping over pieces
+                if (!dests.contains(sq2)) dests.add(sq2);
+              }
+            }
+          }
+        } else if (effect.type == PowerupType.enrage && effect.targetSquare == fromSquare) {
+          // Pawn captures forward
+          ch.Piece? p = getPiece(fromSquare);
+          if (p != null && p.type == ch.PieceType.PAWN) {
+            int dir = p.color == ch.Color.WHITE ? 1 : -1;
+            int rank = int.parse(fromSquare[1]);
+            String file = fromSquare[0];
+            int newRank = rank + dir;
+            if (newRank >= 1 && newRank <= 8) {
+              String target = '$file$newRank';
+              ch.Piece? targetP = getPiece(target);
+              if (targetP != null && targetP.color != p.color) {
+                if (!dests.contains(target)) dests.add(target);
+              }
+            }
+          }
+        }
+      }
+    }
+    return dests;
   }
 
   // ── Make Move ────────────────────────────────────────────────────────────────
   /// Plays a move. Returns the Move object on success, null if illegal.
-  ch.Move? makeMove(String from, String to, {String? promotion}) {
+  EngineMove? makeMove(String from, String to, {String? promotion, List<ActiveEffect>? activeEffects}) {
     // Peek at move list before to find the matching Move object (captures etc.)
     ch.Move? matchingMove;
     for (var m in _game.generate_moves({'legal': true})) {
@@ -71,13 +118,33 @@ class ChessEngine {
       }
     }
 
-    if (matchingMove == null) return null;
+    if (matchingMove != null) {
+      Map<String, dynamic> moveMap = {'from': from, 'to': to};
+      if (promotion != null) moveMap['promotion'] = promotion;
+      _game.move(moveMap);
+      return EngineMove(from: from, to: to, captured: matchingMove.captured);
+    }
+    
+    // Check custom powerup moves
+    if (activeEffects != null) {
+      final dests = getLegalDestinations(from, activeEffects: activeEffects);
+      if (dests.contains(to)) {
+        ch.Piece? p = removePiece(from);
+        ch.Piece? capturedPiece = getPiece(to);
+        if (capturedPiece != null) removePiece(to);
+        if (p != null) {
+          putPiece(p.type.name, p.color == ch.Color.WHITE ? 'white' : 'black', to);
+          swapTurn();
+          return EngineMove(
+            from: from,
+            to: to,
+            captured: capturedPiece?.type.name,
+          );
+        }
+      }
+    }
 
-    Map<String, dynamic> moveMap = {'from': from, 'to': to};
-    if (promotion != null) moveMap['promotion'] = promotion;
-
-    bool ok = _game.move(moveMap);
-    return ok ? matchingMove : null;
+    return null;
   }
 
   /// Undo the last move.
@@ -154,6 +221,7 @@ class ChessEngine {
     for (var effect in effects) {
       switch (effect.type) {
         case PowerupType.fortress:
+        case PowerupType.wall:
           if (effect.affectedSquares != null) {
             filtered.removeWhere(
               (m) => effect.affectedSquares!.contains(m.toAlgebraic),

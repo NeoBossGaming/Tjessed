@@ -73,42 +73,13 @@ class _PlaygroundScreenState extends State<PlaygroundScreen> {
       ),
       body: AnimatedBackground(
         child: SafeArea(
-          child: Column(
+          child: Row(
             children: [
-              const SizedBox(height: 16),
-              // Turn Selection
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('Side to move: ', style: AppTextStyles.body),
-                    const SizedBox(width: 8),
-                    ToggleButtons(
-                      isSelected: [_engine.turnColor == 'white', _engine.turnColor == 'black'],
-                      onPressed: (index) {
-                        setState(() {
-                          if (index == 0 && _engine.turnColor != 'white') _engine.swapTurn();
-                          if (index == 1 && _engine.turnColor != 'black') _engine.swapTurn();
-                        });
-                      },
-                      color: AppColors.textSecondary,
-                      selectedColor: AppColors.background,
-                      fillColor: AppColors.accentCyan,
-                      borderRadius: BorderRadius.circular(8),
-                      children: const [
-                        Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('WHITE')),
-                        Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('BLACK')),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Board
+              // Left Side: Board
               Expanded(
+                flex: 2,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.all(24.0),
                   child: Center(
                     child: AspectRatio(
                       aspectRatio: 1.0,
@@ -167,55 +138,105 @@ class _PlaygroundScreenState extends State<PlaygroundScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              // Palette
-              _buildPalette(),
-              const SizedBox(height: 16),
-              // Actions
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Column(
-                  children: [
-                    Row(
+              
+              // Right Side: Palette and Actions
+              SizedBox(
+                width: 350,
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _clearBoard,
-                            style: OutlinedButton.styleFrom(foregroundColor: AppColors.accentRed),
-                            child: const Text('CLEAR'),
+                        // Turn Selection
+                        GlassContainer(
+                          opacity: 0.1,
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            children: [
+                              Text('SIDE TO MOVE', style: AppTextStyles.heading3.copyWith(color: AppColors.accentCyan)),
+                              const SizedBox(height: 12),
+                              ToggleButtons(
+                                isSelected: [_engine.turnColor == 'white', _engine.turnColor == 'black'],
+                                onPressed: (index) {
+                                  setState(() {
+                                    if (index == 0 && _engine.turnColor != 'white') _engine.swapTurn();
+                                    if (index == 1 && _engine.turnColor != 'black') _engine.swapTurn();
+                                  });
+                                },
+                                color: AppColors.textSecondary,
+                                selectedColor: AppColors.textPrimary,
+                                fillColor: AppColors.accentCyan,
+                                borderRadius: BorderRadius.circular(12),
+                                children: [
+                                  Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: const Text('WHITE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
+                                  Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: const Text('BLACK', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _resetBoard,
-                            style: OutlinedButton.styleFrom(foregroundColor: AppColors.textPrimary),
-                            child: const Text('RESET'),
+                        const SizedBox(height: 24),
+                        
+                        // Palette
+                        _buildPalette(),
+                        const SizedBox(height: 24),
+                        
+                        // Actions
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: _clearBoard,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppColors.accentRed,
+                                  side: const BorderSide(color: AppColors.accentRed),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                ),
+                                child: const Text('CLEAR'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: _resetBoard,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppColors.textPrimary,
+                                  side: const BorderSide(color: AppColors.textPrimary),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                ),
+                                child: const Text('RESET'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ElevatedButton(
+                          onPressed: () => _playVsAi('white'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.textLight, 
+                            foregroundColor: AppColors.backgroundEnd,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
+                          child: const Text('PLAY AS WHITE'),
+                        ),
+                        const SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: () => _playVsAi('black'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.textPrimary, 
+                            foregroundColor: AppColors.backgroundEnd,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          child: const Text('PLAY AS BLACK'),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => _playVsAi('white'),
-                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.backgroundEnd, foregroundColor: AppColors.textPrimary),
-                            child: const Text('PLAY AS WHITE'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => _playVsAi('black'),
-                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.textPrimary, foregroundColor: AppColors.backgroundEnd),
-                            child: const Text('PLAY AS BLACK'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ],

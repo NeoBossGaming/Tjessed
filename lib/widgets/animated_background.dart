@@ -41,9 +41,11 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
         AnimatedBuilder(
           animation: _ctrl,
           builder: (context, _) {
-            return CustomPaint(
-              painter: FloatingShapesPainter(_ctrl.value),
-              size: Size.infinite,
+            return RepaintBoundary(
+              child: CustomPaint(
+                painter: FloatingShapesPainter(_ctrl.value),
+                size: Size.infinite,
+              ),
             );
           },
         ),
@@ -60,18 +62,18 @@ class FloatingShapesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final colors = [
-      AppColors.accentCyan.withAlpha(20),
-      AppColors.accentPink.withAlpha(20),
-      AppColors.accentPurple.withAlpha(20),
-      AppColors.accentAmber.withAlpha(20),
+      AppColors.accentCyan.withAlpha(90),
+      AppColors.accentPink.withAlpha(90),
+      AppColors.accentPurple.withAlpha(90),
+      AppColors.accentAmber.withAlpha(90),
     ];
     
-    final radius = size.width * 0.6;
+    final radius = size.width * 0.7;
 
     for (int i = 0; i < colors.length; i++) {
       final paint = Paint()
         ..color = colors[i]
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.2);
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.15);
 
       final double angle = (time * math.pi * 2) + (i * math.pi / 2);
       final double cx = size.width / 2 + math.sin(angle) * (size.width * 0.3);

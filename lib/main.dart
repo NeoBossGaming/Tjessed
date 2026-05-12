@@ -24,7 +24,7 @@ class MasterChessApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Tjess',
+      title: 'Tjessed',
       theme: ThemeData.dark().copyWith(
         primaryColor: AppColors.accentCyan,
         scaffoldBackgroundColor: AppColors.background,

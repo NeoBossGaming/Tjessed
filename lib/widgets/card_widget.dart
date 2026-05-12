@@ -63,15 +63,9 @@ class _CardWidgetState extends State<CardWidget> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      tierColor.withAlpha(
-                        widget.isDragging ? 120 : (_isHovered ? 90 : 50),
-                      ),
-                      tierColor.withAlpha(
-                        widget.isDragging ? 80 : (_isHovered ? 60 : 25),
-                      ),
-                      Colors.black.withAlpha(40),
+                      tierColor,
+                      Color.lerp(tierColor, Colors.black, 0.15)!,
                     ],
-                    stops: const [0.0, 0.5, 1.0],
                   ),
                   border: Border.all(
                     color: tierColor.withAlpha(
@@ -118,7 +112,7 @@ class _CardWidgetState extends State<CardWidget> {
                         ),
                         child: Text(
                           p.category.emoji,
-                          style: const TextStyle(fontSize: 10),
+                          style: const TextStyle(fontSize: 12),
                         ),
                       ),
                     ),
@@ -130,7 +124,7 @@ class _CardWidgetState extends State<CardWidget> {
                           const SizedBox(height: 4),
                           Icon(
                             p.icon,
-                            color: tierColor,
+                            color: Colors.white,
                             size: widget.isDragging ? 34 : 28,
                           ),
                           const SizedBox(height: 4),
@@ -139,9 +133,15 @@ class _CardWidgetState extends State<CardWidget> {
                             child: Text(
                               p.name,
                               style: AppTextStyles.caption.copyWith(
-                                color: Colors.white.withAlpha(220),
-                                fontSize: 8,
-                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                                shadows: [
+                                  Shadow(
+                                    color: Colors.black.withAlpha(150),
+                                    blurRadius: 2,
+                                  )
+                                ],
                               ),
                               textAlign: TextAlign.center,
                               maxLines: 2,
@@ -152,10 +152,16 @@ class _CardWidgetState extends State<CardWidget> {
                           Text(
                             p.tier.label.toUpperCase(),
                             style: AppTextStyles.caption.copyWith(
-                              color: tierColor,
-                              fontSize: 7,
+                              color: Colors.white,
+                              fontSize: 8,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 1.0,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black.withAlpha(150),
+                                  blurRadius: 2,
+                                )
+                              ],
                             ),
                           ),
                         ],

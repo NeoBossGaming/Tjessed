@@ -64,6 +64,7 @@ class PowerupEngine {
     required ChessEngine engine,
     required String playerColor,
     String? targetSquare,
+    String? targetSquare2,
     List<String>? capturedPieces,
     int currentTimeLeft = 0,
   }) {
@@ -89,13 +90,17 @@ class PowerupEngine {
         bool hasLos = false;
         final targetFile = targetSquare[0];
         final targetRank = targetSquare[1];
-        engine.getBoardPieces().forEach((sq, p) {
+        final allPieces = engine.getBoardPieces();
+        for (final entry in allPieces.entries) {
+          final sq = entry.key;
+          final p = entry.value;
           if (p.color == playerColor && (p.type == 'r' || p.type == 'q')) {
             if (sq[0] == targetFile || sq[1] == targetRank) {
               hasLos = true;
+              break;
             }
           }
-        });
+        }
 
         if (!hasLos) {
           return PowerupResult(success: false, message: 'No Queen/Rook has line of sight (same rank/file)!');
@@ -104,24 +109,20 @@ class PowerupEngine {
         engine.removePiece(targetSquare);
         return PowerupResult(success: true, message: 'BOOM! Target neutralized.', swappedSquares: [targetSquare]);
 
-      case PowerupType.pawnWall:
-        int spawned = 0;
-        final targetRank = playerColor == 'white' ? '2' : '7';
-        final files = ['c', 'd', 'e', 'f']..shuffle(_random);
-        final spawnedSquares = <String>[];
-
-        for (var file in files) {
-          final sq = '$file$targetRank';
-          if (engine.getPiece(sq) == null) {
-            engine.putPiece('p', playerColor, sq);
-            spawnedSquares.add(sq);
-            spawned++;
-            if (spawned >= 2) break;
-          }
+      case PowerupType.wall:
+        if (targetSquare == null) {
+          return PowerupResult(success: false, message: 'Select wall location!', requiresTarget: true);
         }
-
-        if (spawned == 0) return PowerupResult(success: false, message: 'No space for Pawn Wall!');
-        return PowerupResult(success: true, message: 'Pawn Wall constructed!', swappedSquares: spawnedSquares);
+        return PowerupResult(
+          success: true,
+          message: 'Wall constructed for 3 turns!',
+          activeEffect: ActiveEffect(
+            type: PowerupType.wall,
+            targetSquare: targetSquare,
+            affectedSquares: getWallZone(targetSquare),
+            turnsRemaining: 6,
+          ),
+        );
 
       case PowerupType.quickStep:
         if (targetSquare == null) {
@@ -217,7 +218,7 @@ class PowerupEngine {
           activeEffect: ActiveEffect(
             type: PowerupType.fortress,
             targetSquare: targetSquare,
-            affectedSquares: _getFortressZone(targetSquare),
+            affectedSquares: getFortressZone(targetSquare),
             turnsRemaining: 3,
           ),
         );
@@ -230,11 +231,29 @@ class PowerupEngine {
         );
 
       case PowerupType.swap:
-        if (targetSquare == null) {
-          return PowerupResult(success: false, message: 'Select first piece to swap!', requiresTarget: true);
+        if (targetSquare == null || targetSquare2 == null) {
+          return PowerupResult(success: false, message: 'Select two pieces to swap!', requiresTarget: true);
         }
-        // For simplicity, swap with a random friendly non-king piece
-        return _applySwap(engine, playerColor, targetSquare);
+        final p1 = engine.getPiece(targetSquare);
+        final p2 = engine.getPiece(targetSquare2);
+        
+        if (p1 == null || p2 == null) {
+            return PowerupResult(success: false, message: 'Both squares must have pieces!');
+        }
+        if (p1.type.name == 'k' || p2.type.name == 'k') {
+            return PowerupResult(success: false, message: 'Cannot swap a King!');
+        }
+        
+        engine.removePiece(targetSquare);
+        engine.removePiece(targetSquare2);
+        engine.putPiece(p2.type.name, p2.color == ch.Color.WHITE ? 'white' : 'black', targetSquare);
+        engine.putPiece(p1.type.name, p1.color == ch.Color.WHITE ? 'white' : 'black', targetSquare2);
+        
+        return PowerupResult(
+          success: true,
+          message: 'Pieces swapped!',
+          swappedSquares: [targetSquare, targetSquare2],
+        );
 
       case PowerupType.conscription:
         if (targetSquare == null) {
@@ -319,51 +338,6 @@ class PowerupEngine {
 
   // ── COMPLEX POWERUP IMPLEMENTATIONS ─────────────────────────────────────
 
-  PowerupResult _applySwap(ChessEngine engine, String playerColor, String square1) {
-    final piece1 = engine.getPiece(square1);
-    if (piece1 == null) {
-      return PowerupResult(success: false, message: 'No piece at that square!');
-    }
-    final p1Color = piece1.color == ch.Color.WHITE ? 'white' : 'black';
-    if (p1Color != playerColor) {
-      return PowerupResult(success: false, message: 'Must select your own piece!');
-    }
-    if (piece1.type == ch.PieceType.KING) {
-      return PowerupResult(success: false, message: 'Cannot swap the king!');
-    }
-
-    // Find a random friendly non-king piece to swap with
-    final boardPieces = engine.getBoardPieces();
-    final friendlySquares = boardPieces.entries
-        .where((e) =>
-            e.value.color == playerColor &&
-            e.value.type != 'k' &&
-            e.key != square1)
-        .map((e) => e.key)
-        .toList();
-
-    if (friendlySquares.isEmpty) {
-      return PowerupResult(success: false, message: 'No other piece to swap with!');
-    }
-
-    friendlySquares.shuffle(_random);
-    final square2 = friendlySquares.first;
-
-    final p2 = engine.removePiece(square2);
-    engine.removePiece(square1);
-
-    if (p2 != null) {
-      engine.putPiece(piece1.type.name, p1Color, square2);
-      engine.putPiece(p2.type.name, p1Color, square1);
-    }
-
-    return PowerupResult(
-      success: true,
-      message: 'Pieces swapped!',
-      swappedSquares: [square1, square2],
-    );
-  }
-
   PowerupResult _applyExile(ChessEngine engine, String playerColor, String targetSquare) {
     final piece = engine.getPiece(targetSquare);
     if (piece == null) {
@@ -433,7 +407,7 @@ class PowerupEngine {
   }
 
   PowerupResult _applyBlackHole(ChessEngine engine, String targetSquare) {
-    final zone = _getFortressZone(targetSquare);
+    final zone = getFortressZone(targetSquare);
     int destroyed = 0;
 
     for (final sq in zone) {
@@ -444,13 +418,11 @@ class PowerupEngine {
       }
     }
 
-    if (destroyed == 0) {
-      return PowerupResult(success: false, message: 'No pieces in the zone to destroy!');
-    }
-
     return PowerupResult(
       success: true,
-      message: 'Black Hole destroyed $destroyed piece${destroyed > 1 ? "s" : ""}!',
+      message: destroyed > 0 
+          ? 'Black Hole destroyed $destroyed piece${destroyed > 1 ? "s" : ""}!'
+          : 'Black Hole opened on empty space.',
       swappedSquares: zone,
     );
   }
@@ -459,12 +431,16 @@ class PowerupEngine {
     final boardPieces = engine.getBoardPieces();
     int promoted = 0;
 
-    for (final entry in boardPieces.entries) {
-      if (entry.value.type == 'p' && entry.value.color == playerColor) {
-        engine.removePiece(entry.key);
-        engine.putPiece('q', playerColor, entry.key);
-        promoted++;
-      }
+    // Collect pawn squares first to avoid concurrent modification
+    final pawnSquares = boardPieces.entries
+        .where((e) => e.value.type == 'p' && e.value.color == playerColor)
+        .map((e) => e.key)
+        .toList();
+
+    for (final sq in pawnSquares) {
+      engine.removePiece(sq);
+      engine.putPiece('q', playerColor, sq);
+      promoted++;
     }
 
     if (promoted == 0) {
@@ -478,7 +454,8 @@ class PowerupEngine {
   }
 
   PowerupResult _applyChaosStorm(ChessEngine engine) {
-    final boardPieces = engine.getBoardPieces();
+    // Take a snapshot of the board to avoid concurrent modification
+    final boardPieces = Map<String, PieceInfo>.from(engine.getBoardPieces());
     final nonKing = boardPieces.entries
         .where((e) => e.value.type != 'k')
         .map((e) => e.key)
@@ -518,14 +495,33 @@ class PowerupEngine {
 
   // ── HELPERS ─────────────────────────────────────────────────────────────
 
-  List<String> _getFortressZone(String topLeft) {
+  static List<String> getWallZone(String topLeft) {
     final (row, col) = squareToGrid(topLeft);
+    int r = row;
+    int c = col;
+    
+    // Adjust if on right edge (for 1x2 horizontal wall)
+    if (c > 6) c = 6;
+    
+    final zone = <String>[];
+    zone.add(gridToSquare(r, c));
+    zone.add(gridToSquare(r, c + 1));
+    return zone;
+  }
+
+  static List<String> getFortressZone(String topLeft) {
+    final (row, col) = squareToGrid(topLeft);
+    int r = row;
+    int c = col;
+
+    // Adjust if on far edges (for 2x2 zone)
+    if (r > 6) r = 6;
+    if (c > 6) c = 6;
+
     final zone = <String>[];
     for (int dr = 0; dr < 2; dr++) {
       for (int dc = 0; dc < 2; dc++) {
-        final r = row + dr;
-        final c = col + dc;
-        if (r >= 0 && r < 8 && c >= 0 && c < 8) zone.add(gridToSquare(r, c));
+        zone.add(gridToSquare(r + dr, c + dc));
       }
     }
     return zone;

@@ -6,79 +6,94 @@ import 'package:google_fonts/google_fonts.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AppColors {
-  // Primary palette - Premium Dark Mode
-  static const Color background = Color(0xFF0F172A); // Slate 900
-  static const Color backgroundEnd = Color(0xFF020617); // Slate 950
-  static const Color surface = Color(0x33FFFFFF); // Translucent
-  static const Color surfaceLight = Color(0x4DFFFFFF); // Translucent light
-  static const Color cardBg = Color(0x40000000); // Dark translucent
+  // Primary palette - Fun Pastel Theme (Peach & Turquoise)
+  static const Color background = Color(0xFFFFF3E0); // Soft Peach
+  static const Color backgroundEnd = Color(0xFFFFE0B2); // Warm Pastel Orange
+  static const Color surface = Color(0xFFFFFFFF); // Pure White
+  static const Color surfaceLight = Color(0x66FFFFFF); // Translucent White
+  static const Color cardBg = Color(0xFFFFFFFF);
 
-  // Accent colors (Premium Neon/Pastel)
-  static const Color accentCyan = Color(0xFF06B6D4); // Cyan 500
-  static const Color accentPink = Color(0xFFEC4899); // Pink 500
-  static const Color accentPurple = Color(0xFFA855F7); // Purple 500
-  static const Color accentAmber = Color(0xFFF59E0B); // Amber 500
-  static const Color accentGreen = Color(0xFF10B981); // Emerald 500
-  static const Color accentRed = Color(0xFFEF4444); // Red 500
+  // Accent colors
+  static const Color accentCyan = Color(0xFF00ACC1); // Bright Turquoise
+  static const Color accentPink = Color(0xFFF06292); // Fun Pink
+  static const Color accentPurple = Color(0xFFBA68C8); // Soft Purple
+  static const Color accentAmber = Color(0xFFFFB74D); // Soft Amber
+  static const Color accentGreen = Color(0xFF81C784); // Soft Green
+  static const Color accentRed = Color(0xFFE57373); // Soft Red
 
-  // Board colors (Pastel/Chess.com style)
+  // Board colors (Light & Fun Theme variants)
   static Color getBoardLight(String theme) {
-    switch(theme) {
-      case 'Classic Wood': return const Color(0xFFF0D9B5);
-      case 'Dark Neon': return const Color(0xFF2B2B36);
-      case 'Ocean Blue': return const Color(0xFFE0EAEF);
+    switch (theme) {
+      case 'Classic Wood':
+        return const Color(0xFFFFF9C4); // Light Yellow
+      case 'Dark Neon':
+        return const Color(0xFFB2EBF2); // Soft Cyan
       case 'Pastel':
+        return const Color(0xFFF8BBD0); // Soft Pink
+      case 'Ocean':
+        return const Color(0xFFE1F5FE); // Light Blue
       default:
-        return const Color(0xFFEEEED2);
+        return const Color(0xFFFFF9C4);
     }
   }
 
   static Color getBoardDark(String theme) {
-    switch(theme) {
-      case 'Classic Wood': return const Color(0xFFB58863);
-      case 'Dark Neon': return const Color(0xFF5CE1E6).withAlpha(150);
-      case 'Ocean Blue': return const Color(0xFF4B7399);
+    switch (theme) {
+      case 'Classic Wood':
+        return const Color(0xFFFFCC80); // Soft Orange
+      case 'Dark Neon':
+        return const Color(0xFF4DD0E1); // Medium Cyan
       case 'Pastel':
+        return const Color(0xFFF06292); // Medium Pink
+      case 'Ocean':
+        return const Color(0xFF4FC3F7); // Medium Blue
       default:
-        return const Color(0xFF769656); // Chess.com green
+        return const Color(0xFFFFCC80);
     }
   }
-  static const Color boardBorder = Color(0xFF4A623A);
+  static const Color boardBorder = Color(0xFFFFE0B2); 
 
   // Highlight colors
-  static const Color moveHighlight = Color(0x66000000); // Dark dots for moves
-  static const Color lastMoveHighlight = Color(0x66F9DF6E); // Yellow highlight
-  static const Color checkHighlight = Color(0x99FF3333); // Red check
-  static const Color captureHighlight = Color(0x66000000);
-  static const Color selectedHighlight = Color(0x66F9DF6E);
+  static const Color moveHighlight = Color(0x6600ACC1); 
+  static const Color lastMoveHighlight = Color(0x66FFB74D); 
+  static const Color checkHighlight = Color(0x99E57373); 
+  static const Color captureHighlight = Color(0x66BA68C8);
+  static const Color selectedHighlight = Color(0x66F06292);
 
-  // Powerup tier colors (5 tiers) - matched to card rarity
-  static const Color tierCommon = Color(0xFF9E9E9E); // Silver/Grey
-  static const Color tierUncommon = Color(0xFF06D6A0); // Mint Green
-  static const Color tierRare = Color(0xFF5CE1E6); // Bright Cyan
-  static const Color tierEpic = Color(0xFFCB6CE6); // Purple
-  static const Color tierLegendary = Color(0xFFFFD166); // Gold
+  // Powerup tier colors
+  static const Color tierCommon = Color(0xFFA1887F); // Light Brown
+  static const Color tierUncommon = Color(0xFF81C784); // Green
+  static const Color tierRare = Color(0xFF64B5F6); // Blue
+  static const Color tierEpic = Color(0xFF9575CD); // Purple
+  static const Color tierLegendary = Color(0xFFFFD54F); // Gold
 
-  // Text
-  static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFFC0C0D0);
-  static const Color textMuted = Color(0xFF808090);
+  // Text - Dark Brown for High Readability on Pastel
+  static const Color textPrimary = Color(0xFF4E342E); 
+  static const Color textSecondary = Color(0xFF795548); 
+  static const Color textMuted = Color(0xFF8D6E63); 
+  static const Color textLight = Color(0xFFFFFFFF); 
 
   // Gradients
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [Color(0xFF0F172A), Color(0xFF020617)],
+    colors: [Color(0xFFFFF3E0), Color(0xFFFFE0B2)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient dangerGradient = LinearGradient(
-    colors: [Color(0xFFEF4444), Color(0xFFEC4899)],
+    colors: [Color(0xFFE57373), Color(0xFFEF5350)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient goldGradient = LinearGradient(
-    colors: [Color(0xFFFFD166), Color(0xFFFF9F1C)],
+    colors: [Color(0xFFFFB74D), Color(0xFFFFA726)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  
+  static const LinearGradient coolGradient = LinearGradient(
+    colors: [Color(0xFF00ACC1), Color(0xFF00838F)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -89,48 +104,48 @@ class AppColors {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AppTextStyles {
-  static TextStyle get heading1 => GoogleFonts.outfit(
+  static TextStyle get heading1 => GoogleFonts.nunito(
     fontSize: 32,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w900,
     color: AppColors.textPrimary,
     letterSpacing: -0.5,
   );
 
-  static TextStyle get heading2 => GoogleFonts.outfit(
+  static TextStyle get heading2 => GoogleFonts.nunito(
     fontSize: 24,
+    fontWeight: FontWeight.w800,
+    color: AppColors.textPrimary,
+  );
+
+  static TextStyle get heading3 => GoogleFonts.nunito(
+    fontSize: 18,
     fontWeight: FontWeight.w700,
     color: AppColors.textPrimary,
   );
 
-  static TextStyle get heading3 => GoogleFonts.outfit(
-    fontSize: 18,
+  static TextStyle get body => GoogleFonts.nunito(
+    fontSize: 15,
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
 
-  static TextStyle get body => GoogleFonts.inter(
-    fontSize: 15,
-    fontWeight: FontWeight.w400,
-    color: AppColors.textPrimary,
-  );
-
-  static TextStyle get bodySmall => GoogleFonts.inter(
+  static TextStyle get bodySmall => GoogleFonts.nunito(
     fontSize: 13,
-    fontWeight: FontWeight.w400,
+    fontWeight: FontWeight.w600,
     color: AppColors.textSecondary,
   );
 
-  static TextStyle get caption => GoogleFonts.inter(
+  static TextStyle get caption => GoogleFonts.nunito(
     fontSize: 11,
-    fontWeight: FontWeight.w500,
-    color: AppColors.textMuted,
+    fontWeight: FontWeight.w700,
+    color: AppColors.textPrimary,
     letterSpacing: 0.5,
   );
 
-  static TextStyle get button => GoogleFonts.outfit(
+  static TextStyle get button => GoogleFonts.nunito(
     fontSize: 16,
-    fontWeight: FontWeight.w700,
-    color: AppColors.textPrimary,
+    fontWeight: FontWeight.w800,
+    color: AppColors.textLight,
     letterSpacing: 0.5,
   );
 }
@@ -140,8 +155,8 @@ class AppTextStyles {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AppDimensions {
-  static const double borderRadius = 16.0;
-  static const double borderRadiusSmall = 8.0;
+  static const double borderRadius = 24.0;
+  static const double borderRadiusSmall = 12.0;
   static const double padding = 16.0;
   static const double paddingSmall = 8.0;
   static const double paddingLarge = 24.0;

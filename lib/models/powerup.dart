@@ -55,13 +55,13 @@ enum PowerupType {
     icon: Icons.gps_fixed,
     isTargeted: true,
   ),
-  pawnWall(
+  wall(
     tier: PowerupTier.rare,
     category: PowerupCategory.defensive,
-    name: 'Pawn Wall',
-    description: 'Spawn up to 2 pawns on empty squares in your 2nd/7th rank',
+    name: 'Wall',
+    description: 'Block a 1×2 zone for 3 turns',
     icon: Icons.view_column,
-    isTargeted: false,
+    isTargeted: true,
   ),
   quickStep(
     tier: PowerupTier.common,

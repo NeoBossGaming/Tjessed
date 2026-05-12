@@ -8,6 +8,7 @@ class GlassContainer extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final BoxBorder? border;
   final List<BoxShadow>? boxShadow;
+  final Gradient? gradient;
 
   const GlassContainer({
     super.key,
@@ -17,6 +18,7 @@ class GlassContainer extends StatelessWidget {
     this.padding = const EdgeInsets.all(16.0),
     this.border,
     this.boxShadow,
+    this.gradient,
   });
 
   @override
@@ -24,23 +26,18 @@ class GlassContainer extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
-            color: Colors.white.withAlpha((opacity * 255).toInt()),
+            color: (gradient == null ? Colors.white : null)?.withAlpha((opacity * 255).toInt()),
+            gradient: gradient,
             borderRadius: BorderRadius.circular(borderRadius),
             border: border ?? Border.all(
-              color: Colors.white.withAlpha((0.2 * 255).toInt()),
-              width: 1.0,
+              color: Colors.white.withAlpha(80),
+              width: 1.5,
             ),
-            boxShadow: boxShadow ?? [
-              BoxShadow(
-                color: Colors.black.withAlpha((0.1 * 255).toInt()),
-                blurRadius: 10,
-                spreadRadius: 2,
-              )
-            ],
+            boxShadow: boxShadow,
           ),
           child: child,
         ),

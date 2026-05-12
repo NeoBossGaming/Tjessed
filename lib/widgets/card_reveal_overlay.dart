@@ -18,11 +18,12 @@ class CardRevealOverlay extends StatelessWidget {
     final tier = powerup.tier;
     final color = tier.color;
 
-    return GestureDetector(
-      onTap: onDismiss,
-      child: Scaffold(
-        backgroundColor: Colors.black.withAlpha(200),
-        body: Stack(
+    return Material(
+      color: Colors.black.withAlpha(220),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onDismiss,
+        child: Stack(
           children: [
             // Background particles/shimmer based on rarity
             if (tier.level >= 4)
@@ -35,7 +36,7 @@ class CardRevealOverlay extends StatelessWidget {
                   Text(
                     '${tier.label.toUpperCase()} POWER-UP!',
                     style: AppTextStyles.heading3.copyWith(color: color, letterSpacing: 4),
-                  ).animate().fade(duration: 400.ms).slideY(begin: -0.2, end: 0),
+                  ).animate().fade(duration: 250.ms).slideY(begin: -0.2, end: 0),
                   
                   const SizedBox(height: 40),
                   
@@ -74,8 +75,8 @@ class CardRevealOverlay extends StatelessWidget {
                     ),
                   )
                   .animate()
-                  .scale(duration: 600.ms, curve: Curves.elasticOut)
-                  .shimmer(delay: 600.ms, duration: 1500.ms, color: Colors.white24),
+                  .scale(duration: 400.ms, curve: Curves.easeOutBack)
+                  .shimmer(delay: 350.ms, duration: 1200.ms, color: Colors.white24),
 
                   const SizedBox(height: 60),
                   
@@ -115,7 +116,7 @@ void showCardReveal(BuildContext context, PowerupType powerup) {
     barrierDismissible: true,
     barrierLabel: 'CardReveal',
     barrierColor: Colors.black54,
-    transitionDuration: const Duration(milliseconds: 300),
+    transitionDuration: const Duration(milliseconds: 200),
     pageBuilder: (context, anim1, anim2) {
       return CardRevealOverlay(
         powerup: powerup,

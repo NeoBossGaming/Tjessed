@@ -93,13 +93,63 @@ class _LobbyScreenState extends State<LobbyScreen> {
   }
 
   void _playVsAi() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => GameScreen(
-          matchId: 'SP_${DateTime.now().millisecondsSinceEpoch}',
-          playerUid: playerProfile?.uid ?? 'SP_USER',
-          isMultiplayer: false,
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDimensions.borderRadius)),
+        title: Text("Select AI Difficulty", style: AppTextStyles.heading2, textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildDifficultyOption("Easy", "600 ELO", AppColors.accentGreen, GameConstants.aiEasyDepth),
+            const SizedBox(height: 12),
+            _buildDifficultyOption("Medium", "1200 ELO", AppColors.accentAmber, GameConstants.aiMediumDepth),
+            const SizedBox(height: 12),
+            _buildDifficultyOption("Hard", "1800 ELO", AppColors.accentRed, GameConstants.aiHardDepth),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDifficultyOption(String title, String subtitle, Color color, int depth) {
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => GameScreen(
+              matchId: 'SP_${DateTime.now().millisecondsSinceEpoch}',
+              playerUid: playerProfile?.uid ?? 'SP_USER',
+              isMultiplayer: false,
+              aiDepth: depth,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withAlpha(20),
+          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSmall),
+          border: Border.all(color: color.withAlpha(100), width: 2),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.psychology, color: color, size: 32),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTextStyles.heading3.copyWith(color: color)),
+                Text(subtitle, style: AppTextStyles.caption),
+              ],
+            ),
+            const Spacer(),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.textSecondary),
+          ],
         ),
       ),
     );
@@ -304,9 +354,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Column(
           children: [
-            Icon(icon, color: AppColors.accentCyan, size: 24),
-            const SizedBox(height: 4),
-            Text(label, style: AppTextStyles.caption.copyWith(fontSize: 9, fontWeight: FontWeight.bold)),
+            Icon(icon, color: AppColors.accentCyan, size: 28),
+            const SizedBox(height: 6),
+            Text(label, style: AppTextStyles.caption.copyWith(fontSize: 11, fontWeight: FontWeight.w900)),
           ],
         ),
       ),

@@ -42,14 +42,18 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget> {
       width: widget.size,
       height: widget.size,
       child: Stack(
+        clipBehavior: Clip.hardEdge,
         children: [
-          // 1. Board Squares
+          // 1. Board Squares (now using Positioned, matching pieces/highlights)
           _buildBoard(squareSize),
           
-          // 2. Highlights & Effects
+          // 2. Active effect overlays on squares
+          _buildEffectOverlays(squareSize),
+
+          // 3. Highlights & Effects
           _buildHighlights(squareSize),
           
-          // 3. Pieces
+          // 4. Pieces
           _buildPieces(squareSize),
         ],
       ),
@@ -61,31 +65,256 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget> {
       animation: SettingsService(),
       builder: (context, _) {
         final theme = SettingsService().boardTheme;
-        return GridView.builder(
-          padding: EdgeInsets.zero,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 8,
-          ),
-          itemCount: 64,
-          itemBuilder: (context, index) {
-            int row = index ~/ 8;
-            int col = index % 8;
-
-            // Adjust for orientation
+        List<Widget> squares = [];
+        for (int r = 0; r < 8; r++) {
+          for (int c = 0; c < 8; c++) {
+            int logicalRow = r;
+            int logicalCol = c;
             if (!widget.isWhiteOrientation) {
-              row = 7 - row;
-              col = 7 - col;
+              logicalRow = 7 - r;
+              logicalCol = 7 - c;
             }
-
-            bool isLight = (row + col) % 2 == 0;
-            return Container(
-              color: isLight ? AppColors.getBoardLight(theme) : AppColors.getBoardDark(theme),
+            bool isLight = (logicalRow + logicalCol) % 2 == 0;
+            squares.add(
+              Positioned(
+                left: c * squareSize,
+                top: r * squareSize,
+                width: squareSize,
+                height: squareSize,
+                child: Container(
+                  color: isLight
+                      ? AppColors.getBoardLight(theme)
+                      : AppColors.getBoardDark(theme),
+                ),
+              ),
             );
-          },
-        );
-      }
+          }
+        }
+        return Stack(children: squares);
+      },
     );
+  }
+
+  Widget _buildEffectOverlays(double squareSize) {
+    List<Widget> overlays = [];
+
+    for (var effect in widget.activeEffects) {
+      switch (effect.type) {
+        case PowerupType.wall:
+          if (effect.affectedSquares != null) {
+            for (var sq in effect.affectedSquares!) {
+              final (vr, vc) = _visualPos(sq);
+              overlays.add(
+                Positioned(
+                  left: vc * squareSize,
+                  top: vr * squareSize,
+                  width: squareSize,
+                  height: squareSize,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withAlpha(60),
+                      border: Border.all(
+                        color: Colors.blue.withAlpha(180),
+                        width: 2,
+                      ),
+                    ),
+                    child: Center(
+                      child: Icon(Icons.view_column, 
+                        color: Colors.blue.withAlpha(150), 
+                        size: squareSize * 0.6),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+          break;
+        case PowerupType.fortress:
+          if (effect.affectedSquares != null) {
+            for (var sq in effect.affectedSquares!) {
+              final (vr, vc) = _visualPos(sq);
+              overlays.add(
+                Positioned(
+                  left: vc * squareSize,
+                  top: vr * squareSize,
+                  width: squareSize,
+                  height: squareSize,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.accentAmber.withAlpha(50),
+                      border: Border.all(
+                        color: AppColors.accentAmber.withAlpha(150),
+                        width: 2,
+                      ),
+                    ),
+                    child: Center(
+                      child: Icon(Icons.castle, 
+                        color: AppColors.accentAmber.withAlpha(120), 
+                        size: squareSize * 0.5),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+          break;
+        case PowerupType.holyShield:
+          if (effect.targetSquare != null) {
+            final (vr, vc) = _visualPos(effect.targetSquare!);
+            overlays.add(
+              Positioned(
+                left: vc * squareSize,
+                top: vr * squareSize,
+                width: squareSize,
+                height: squareSize,
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppColors.accentAmber.withAlpha(200),
+                      width: 3,
+                    ),
+                    borderRadius: BorderRadius.circular(squareSize * 0.1),
+                  ),
+                  child: Center(
+                    child: Icon(Icons.shield, 
+                      color: AppColors.accentAmber.withAlpha(150), 
+                      size: squareSize * 0.4),
+                  ),
+                ),
+              ),
+            );
+          }
+          break;
+        case PowerupType.enrage:
+          if (effect.targetSquare != null) {
+            final (vr, vc) = _visualPos(effect.targetSquare!);
+            overlays.add(
+              Positioned(
+                left: vc * squareSize,
+                top: vr * squareSize,
+                width: squareSize,
+                height: squareSize,
+                child: Container(
+                  color: AppColors.accentRed.withAlpha(60),
+                  child: Center(
+                    child: Icon(Icons.local_fire_department, 
+                      color: AppColors.accentRed.withAlpha(150), 
+                      size: squareSize * 0.5),
+                  ),
+                ),
+              ),
+            );
+          }
+          break;
+        case PowerupType.quickStep:
+          if (effect.targetSquare != null) {
+            final (vr, vc) = _visualPos(effect.targetSquare!);
+            overlays.add(
+              Positioned(
+                left: vc * squareSize,
+                top: vr * squareSize,
+                width: squareSize,
+                height: squareSize,
+                child: Container(
+                  color: AppColors.accentGreen.withAlpha(50),
+                  child: Center(
+                    child: Icon(Icons.keyboard_double_arrow_up, 
+                      color: AppColors.accentGreen.withAlpha(180), 
+                      size: squareSize * 0.5),
+                  ),
+                ),
+              ),
+            );
+          }
+          break;
+        case PowerupType.crownThief:
+          if (effect.targetSquare != null) {
+            final (vr, vc) = _visualPos(effect.targetSquare!);
+            overlays.add(
+              Positioned(
+                left: vc * squareSize,
+                top: vr * squareSize,
+                width: squareSize,
+                height: squareSize,
+                child: Container(
+                  color: AppColors.accentPink.withAlpha(50),
+                  child: Center(
+                    child: Icon(Icons.remove_circle, 
+                      color: AppColors.accentPink.withAlpha(150), 
+                      size: squareSize * 0.4),
+                  ),
+                ),
+              ),
+            );
+          }
+          break;
+        case PowerupType.sabotage:
+          // Red border overlay around entire board
+          overlays.add(
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppColors.accentRed.withAlpha(120),
+                      width: 4,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          break;
+        case PowerupType.freeze:
+          // Blue frost overlay
+          overlays.add(
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      colors: [
+                        Colors.transparent,
+                        AppColors.accentCyan.withAlpha(30),
+                        AppColors.accentCyan.withAlpha(60),
+                      ],
+                      stops: const [0.5, 0.8, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          break;
+        case PowerupType.timeFreeze:
+          // Blue pulsing edges
+          overlays.add(
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppColors.accentCyan.withAlpha(100),
+                      width: 3,
+                    ),
+                    gradient: RadialGradient(
+                      colors: [
+                        Colors.transparent,
+                        AppColors.accentCyan.withAlpha(15),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          break;
+        default:
+          break;
+      }
+    }
+
+    return Stack(children: overlays);
   }
 
   Widget _buildHighlights(double squareSize) {
@@ -165,55 +394,45 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget> {
         String square = gridToSquare(r, c);
         PieceInfo? piece = boardPieces[square];
 
-        if (piece != null) {
-          int visualRow = widget.isWhiteOrientation ? r : 7 - r;
-          int visualCol = widget.isWhiteOrientation ? c : 7 - c;
+        int visualRow = widget.isWhiteOrientation ? r : 7 - r;
+        int visualCol = widget.isWhiteOrientation ? c : 7 - c;
 
-          pieces.add(
-            Positioned(
-              left: visualCol * squareSize,
-              top: visualRow * squareSize,
-              width: squareSize,
-              height: squareSize,
-              child: GestureDetector(
-                onTap: () {
-                  if (widget.onSquareTap != null) {
-                    widget.onSquareTap!(square);
-                  }
-                },
-                child: ChessPieceWidget(
-                  pieceType: piece.type,
-                  color: piece.color,
-                  size: squareSize,
-                ),
-              ),
+        pieces.add(
+          Positioned(
+            left: visualCol * squareSize,
+            top: visualRow * squareSize,
+            width: squareSize,
+            height: squareSize,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (widget.onSquareTap != null) {
+                  widget.onSquareTap!(square);
+                }
+              },
+              child: piece != null
+                  ? ChessPieceWidget(
+                      pieceType: piece.type,
+                      color: piece.color,
+                      size: squareSize,
+                    )
+                  : const SizedBox.expand(),
             ),
-          );
-        } else {
-          // Empty square tap target
-          int visualRow = widget.isWhiteOrientation ? r : 7 - r;
-          int visualCol = widget.isWhiteOrientation ? c : 7 - c;
-          pieces.add(
-            Positioned(
-              left: visualCol * squareSize,
-              top: visualRow * squareSize,
-              width: squareSize,
-              height: squareSize,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  if (widget.onSquareTap != null) {
-                    widget.onSquareTap!(square);
-                  }
-                },
-                child: Container(),
-              ),
-            ),
-          );
-        }
+          ),
+        );
       }
     }
 
     return Stack(children: pieces);
+  }
+
+  (int, int) _visualPos(String square) {
+    int col = square.codeUnitAt(0) - 'a'.codeUnitAt(0);
+    int row = 8 - int.parse(square[1]);
+    if (!widget.isWhiteOrientation) {
+      row = 7 - row;
+      col = 7 - col;
+    }
+    return (row, col);
   }
 }

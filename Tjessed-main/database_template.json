@@ -1,0 +1,49 @@
+{
+  "Accounts": {
+    "USER_ID_1": {
+      "Username": "PlayerOne",
+      "DOB": "01/01/2000",
+      "Elo": 1500,
+      "Matches Played": 10,
+      "Matches Won": 5,
+      "Matches Lost": 5,
+      "Stats": {
+        "PowerupsUsed": 12
+      }
+    }
+  },
+  "Matchmaking": {
+    "USER_ID_1": {
+      "Elo": 1500,
+      "Status": "searching",
+      "Timestamp": 1625000000000,
+      "Username": "PlayerOne"
+    }
+  },
+  "Matches": {
+    "MATCH_UUID_EXAMPLE": {
+      "White Player ID": "USER_ID_1",
+      "Black Player ID": "USER_ID_2",
+      "Game Status": "Active",
+      "Turn": "white",
+      "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "Moves": "e4, e5, Nf3",
+      "MoveCount": 3,
+      "TimeLeftWhite": 600,
+      "TimeLeftBlack": 585,
+      "TimeStarted": "2024-04-24T14:00:00Z",
+      "Mode": "powerup",
+      "Powerups": {
+        "White": {
+          "held": ["freeze", "doubleMove"],
+          "active": []
+        },
+        "Black": {
+          "held": ["shield"],
+          "active": []
+        }
+      },
+      "WonBy": ""
+    }
+  }
+}

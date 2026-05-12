@@ -19,12 +19,8 @@ class GameService {
     required int timeLeftBlack,
     required int timeLeftWhite,
   }) async {
-    final snap = await _matchRef.child('Moves').get();
-    final current = snap.value as String? ?? '';
-    final newMoves = current.isEmpty ? san : '$current, $san';
-
     await _matchRef.update({
-      'Moves': newMoves,
+      'Moves': san,
       'FEN': fen,
       'Turn': turn,
       'MoveCount': moveCount,
@@ -49,6 +45,6 @@ class GameService {
   }
 
   Future<void> endGame({required String status, required String wonBy}) async {
-    await _matchRef.update({'Game Status': status, 'WonBy': wonBy});
+    await _matchRef.update({'GameStatus': status, 'WonBy': wonBy});
   }
 }
