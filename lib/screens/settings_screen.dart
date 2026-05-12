@@ -157,7 +157,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text('Sound Effects', style: AppTextStyles.body),
           Switch(
             value: _soundEnabled,
-            activeThumbColor: AppColors.accentCyan,
+            activeColor: AppColors.accentCyan,
             onChanged: (val) {
               setState(() => _soundEnabled = val);
               _settings.setSoundEnabled(val);

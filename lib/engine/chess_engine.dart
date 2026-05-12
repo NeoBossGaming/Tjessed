@@ -133,12 +133,12 @@ class ChessEngine {
         ch.Piece? capturedPiece = getPiece(to);
         if (capturedPiece != null) removePiece(to);
         if (p != null) {
-          putPiece(p.type.name, p.color == ch.Color.WHITE ? 'white' : 'black', to);
+          putPiece(pieceTypeToString(p.type), p.color == ch.Color.WHITE ? 'white' : 'black', to);
           swapTurn();
           return EngineMove(
             from: from,
             to: to,
-            captured: capturedPiece?.type.name,
+            captured: capturedPiece != null ? pieceTypeToString(capturedPiece.type) : null,
           );
         }
       }
@@ -169,7 +169,7 @@ class ChessEngine {
         ch.Piece? piece = _game.get(sq);
         if (piece != null) {
           pieces[sq] = PieceInfo(
-            type: piece.type.name,   // 'p','n','b','r','q','k'
+            type: pieceTypeToString(piece.type),
             color: piece.color == ch.Color.WHITE ? 'white' : 'black',
             square: sq,
           );
@@ -241,6 +241,18 @@ class ChessEngine {
       }
     }
     return filtered;
+  }
+
+  static String pieceTypeToString(ch.PieceType t) {
+    switch (t) {
+      case ch.PieceType.PAWN: return 'p';
+      case ch.PieceType.KNIGHT: return 'n';
+      case ch.PieceType.BISHOP: return 'b';
+      case ch.PieceType.ROOK: return 'r';
+      case ch.PieceType.QUEEN: return 'q';
+      case ch.PieceType.KING: return 'k';
+      default: return 'p';
+    }
   }
 
   ch.PieceType? _parsePieceType(String t) {

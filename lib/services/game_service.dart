@@ -12,21 +12,24 @@ class GameService {
   Stream<DatabaseEvent> streamMatchData() => _matchRef.onValue;
 
   Future<void> sendMove({
-    required String san,
     required String fen,
     required String turn,
-    required int moveCount,
     required int timeLeftBlack,
     required int timeLeftWhite,
+    String? lastMoveFrom,
+    String? lastMoveTo,
   }) async {
-    await _matchRef.update({
-      'Moves': san,
+    final updates = <String, dynamic>{
       'FEN': fen,
       'Turn': turn,
-      'MoveCount': moveCount,
       'TimeLeftBlack': timeLeftBlack,
       'TimeLeftWhite': timeLeftWhite,
-    });
+      'LastSync': ServerValue.timestamp,
+    };
+    if (lastMoveFrom != null) updates['LastMoveFrom'] = lastMoveFrom;
+    if (lastMoveTo != null) updates['LastMoveTo'] = lastMoveTo;
+    
+    await _matchRef.update(updates);
   }
 
   Future<void> updatePowerups({

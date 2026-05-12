@@ -169,44 +169,44 @@ class MatchmakingService {
       if (result.committed && result.snapshot.value is Map) {
         final snapData = result.snapshot.value as Map;
         if (snapData['MatchId'] == matchId) {
-          // Successfully locked opponent
+          // 1. Initialize the match record FIRST
+          await _db.ref('Matches/$matchId').set({
+            "BlackID": player2,
+            "BlackName": player2Name,
+            "WhiteID": player1.uid,
+            "WhiteName": player1.username,
+            "GameStatus": "Active",
+            "Moves": "",
+            "TimeStarted": DateTime.now().toIso8601String(),
+            "TimeLeftBlack": GameConstants.defaultTimeSeconds,
+            "TimeLeftWhite": GameConstants.defaultTimeSeconds,
+            "WonBy": "",
+            "Mode": "powerup",
+            "Powerups": {
+              "White": {"held": [], "active": []},
+              "Black": {"held": [], "active": []},
+            },
+            "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "Turn": "white",
+            "MoveCount": 0,
+          });
+          
+          debugPrint('[MATCHMAKING] Initialized match data in Matches/$matchId.');
+
+          // 2. Successfully locked opponent, now update my own status to trigger navigation
           await _db.ref('Matchmaking/${player1.uid}').update({
             'Status': 'matched',
             'MatchId': matchId,
           });
 
-        debugPrint('[MATCHMAKING] Updated my own status to matched.');
+          debugPrint('[MATCHMAKING] Updated my own status to matched.');
 
-        // 3. Initialize the match record
-        await _db.ref('Matches/$matchId').set({
-          "BlackID": player2,
-          "BlackName": player2Name,
-          "WhiteID": player1.uid,
-          "WhiteName": player1.username,
-          "GameStatus": "Active",
-          "Moves": "",
-          "TimeStarted": DateTime.now().toIso8601String(),
-          "TimeLeftBlack": GameConstants.defaultTimeSeconds,
-          "TimeLeftWhite": GameConstants.defaultTimeSeconds,
-          "WonBy": "",
-          "Mode": "powerup",
-          "Powerups": {
-            "White": {"held": [], "active": []},
-            "Black": {"held": [], "active": []},
-          },
-          "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-          "Turn": "white",
-          "MoveCount": 0,
-        });
-        
-        debugPrint('[MATCHMAKING] Initialized match data in Matches/$matchId.');
-
-        // Clean up matchmaking entries after match is created
-        Future.delayed(const Duration(seconds: 3), () {
-          debugPrint('[MATCHMAKING] Cleaning up Matchmaking nodes for ${player1.uid} and $player2.');
-          _db.ref('Matchmaking/${player1.uid}').remove();
-          _db.ref('Matchmaking/$player2').remove();
-        });
+          // 3. Clean up matchmaking entries after match is created
+          Future.delayed(const Duration(seconds: 10), () {
+            debugPrint('[MATCHMAKING] Cleaning up Matchmaking nodes for ${player1.uid} and $player2.');
+            _db.ref('Matchmaking/${player1.uid}').remove();
+            _db.ref('Matchmaking/$player2').remove();
+          });
       } else {
         debugPrint('[MATCHMAKING] Match transaction was not committed — opponent unavailable');
         // Restart searching properly since the stream was cancelled

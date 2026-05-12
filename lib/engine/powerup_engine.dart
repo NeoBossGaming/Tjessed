@@ -70,8 +70,9 @@ class PowerupEngine {
   }) {
     switch (type) {
       // ── COMMON ────────────────────────────────────────────────────────────
-      case PowerupType.timeWarp:
-        return PowerupResult(success: true, message: '+30 seconds added!', timeBonus: 30);
+      case PowerupType.push:
+        if (targetSquare == null) return PowerupResult(success: false, message: 'Target piece to push!', requiresTarget: true);
+        return _applyPushPull(engine, playerColor, targetSquare, isPush: true);
 
       case PowerupType.sniper:
         if (targetSquare == null) {
@@ -147,12 +148,9 @@ class PowerupEngine {
           ),
         );
 
-      case PowerupType.minorHeal:
-        final undone = engine.undo();
-        if (undone == null) {
-          return PowerupResult(success: false, message: 'No move to undo!');
-        }
-        return PowerupResult(success: true, message: 'Last move undone — replay!');
+      case PowerupType.pull:
+        if (targetSquare == null) return PowerupResult(success: false, message: 'Target piece to pull!', requiresTarget: true);
+        return _applyPushPull(engine, playerColor, targetSquare, isPush: false);
 
       // ── UNCOMMON ──────────────────────────────────────────────────────────
       case PowerupType.enrage:
@@ -319,24 +317,105 @@ class PowerupEngine {
       case PowerupType.promotionWave:
         return _applyPromotionWave(engine, playerColor);
 
-      case PowerupType.timeFreeze:
-        return PowerupResult(
-          success: true,
-          message: "Opponent's clock frozen for 60 seconds!",
-          activeEffect: ActiveEffect(type: PowerupType.timeFreeze, turnsRemaining: 6),
-          timePenalty: 60,
-        );
+      case PowerupType.earthquake:
+        if (targetSquare == null) return PowerupResult(success: false, message: 'Select center of earthquake!', requiresTarget: true);
+        return _applyEarthquake(engine, playerColor, targetSquare);
 
-      case PowerupType.mirrorDimension:
-        return PowerupResult(
-          success: true,
-          message: 'Your last move will repeat automatically!',
-          activeEffect: ActiveEffect(type: PowerupType.mirrorDimension, turnsRemaining: 1),
-        );
+      case PowerupType.portal:
+        if (targetSquare == null) return PowerupResult(success: false, message: 'Select square to teleport piece to!', requiresTarget: true);
+        return _applyPortal(engine, playerColor, targetSquare);
     }
   }
 
   // ── COMPLEX POWERUP IMPLEMENTATIONS ─────────────────────────────────────
+
+  PowerupResult _applyPushPull(ChessEngine engine, String playerColor, String targetSquare, {required bool isPush}) {
+    final piece = engine.getPiece(targetSquare);
+    if (piece == null) return PowerupResult(success: false, message: 'No piece there!');
+    if (piece.type == ch.PieceType.KING) return PowerupResult(success: false, message: 'Cannot push/pull the king!');
+
+    // Find a random adjacent empty square
+    final (row, col) = squareToGrid(targetSquare);
+    final adjacent = <String>[];
+    for (int dr = -1; dr <= 1; dr++) {
+      for (int dc = -1; dc <= 1; dc++) {
+        if (dr == 0 && dc == 0) continue;
+        final nr = row + dr;
+        final nc = col + dc;
+        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+          final sq = gridToSquare(nr, nc);
+          if (engine.getPiece(sq) == null) adjacent.add(sq);
+        }
+      }
+    }
+
+    if (adjacent.isEmpty) return PowerupResult(success: false, message: 'No room to move piece!');
+    adjacent.shuffle(_random);
+    final destination = adjacent.first;
+
+    final pColor = piece.color == ch.Color.WHITE ? 'white' : 'black';
+    engine.removePiece(targetSquare);
+    engine.putPiece(ChessEngine.pieceTypeToString(piece.type), pColor, destination);
+
+    return PowerupResult(
+      success: true,
+      message: '${isPush ? "Pushed" : "Pulled"} piece to $destination!',
+      swappedSquares: [targetSquare, destination],
+    );
+  }
+
+  PowerupResult _applyEarthquake(ChessEngine engine, String playerColor, String targetSquare) {
+    final (row, col) = squareToGrid(targetSquare);
+    int affected = 0;
+    final moved = <String>[];
+
+    for (int dr = -1; dr <= 1; dr++) {
+      for (int dc = -1; dc <= 1; dc++) {
+        if (dr == 0 && dc == 0) continue;
+        final nr = row + dr;
+        final nc = col + dc;
+        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+          final sq = gridToSquare(nr, nc);
+          final piece = engine.getPiece(sq);
+          if (piece != null && piece.type != ch.PieceType.KING) {
+            // Push it one more square away if possible
+            final targetR = nr + dr;
+            final targetC = nc + dc;
+            if (targetR >= 0 && targetR < 8 && targetC >= 0 && targetC < 8) {
+              final targetSq = gridToSquare(targetR, targetC);
+              if (engine.getPiece(targetSq) == null) {
+                final pColor = piece.color == ch.Color.WHITE ? 'white' : 'black';
+                engine.removePiece(sq);
+                engine.putPiece(ChessEngine.pieceTypeToString(piece.type), pColor, targetSq);
+                moved.add(sq);
+                moved.add(targetSq);
+                affected++;
+              }
+            }
+          }
+        }
+      }
+    }
+    return PowerupResult(success: true, message: 'Earthquake moved $affected pieces!', swappedSquares: moved);
+  }
+
+  PowerupResult _applyPortal(ChessEngine engine, String playerColor, String targetSquare) {
+    if (engine.getPiece(targetSquare) != null) return PowerupResult(success: false, message: 'Target square must be empty!');
+    
+    // Find a friendly piece to teleport
+    final pieces = engine.getBoardPieces();
+    final myPieces = pieces.entries.where((e) => e.value.color == playerColor && e.value.type != 'k').toList();
+    if (myPieces.isEmpty) return PowerupResult(success: false, message: 'No pieces to teleport!');
+    
+    myPieces.shuffle(_random);
+    final source = myPieces.first.key;
+    final piece = myPieces.first.value;
+    
+    engine.removePiece(source);
+    engine.putPiece(piece.type, playerColor, targetSquare);
+    
+    return PowerupResult(success: true, message: 'Teleported piece from $source to $targetSquare!', swappedSquares: [source, targetSquare]);
+  }
 
   PowerupResult _applyExile(ChessEngine engine, String playerColor, String targetSquare) {
     final piece = engine.getPiece(targetSquare);
@@ -368,7 +447,7 @@ class PowerupEngine {
     final destination = emptySquares.first;
 
     engine.removePiece(targetSquare);
-    engine.putPiece(piece.type.name, pColor, destination);
+    engine.putPiece(ChessEngine.pieceTypeToString(piece.type), pColor, destination);
 
     return PowerupResult(
       success: true,
@@ -475,14 +554,14 @@ class PowerupEngine {
       final p2 = engine.removePiece(sq2);
       if (p1 != null) {
         engine.putPiece(
-          p1.type.name,
+          ChessEngine.pieceTypeToString(p1.type),
           p1.color == ch.Color.WHITE ? 'white' : 'black',
           sq2,
         );
       }
       if (p2 != null) {
         engine.putPiece(
-          p2.type.name,
+          ChessEngine.pieceTypeToString(p2.type),
           p2.color == ch.Color.WHITE ? 'white' : 'black',
           sq1,
         );

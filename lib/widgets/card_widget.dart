@@ -173,6 +173,16 @@ class _CardWidgetState extends State<CardWidget> {
               .animate(target: widget.isMyTurn && !widget.isDragging ? 1 : 0)
               .shimmer(duration: 2.seconds, color: Colors.white.withAlpha(60)),
         ),
+      ).animate(target: widget.isMyTurn ? 0 : 1).custom(
+        builder: (context, value, child) => ColorFiltered(
+          colorFilter: ColorFilter.matrix([
+            0.2126 + 0.7874 * (1 - value), 0.7152 - 0.7152 * (1 - value), 0.0722 - 0.0722 * (1 - value), 0, 0,
+            0.2126 - 0.2126 * (1 - value), 0.7152 + 0.2848 * (1 - value), 0.0722 - 0.0722 * (1 - value), 0, 0,
+            0.2126 - 0.2126 * (1 - value), 0.7152 - 0.7152 * (1 - value), 0.0722 + 0.9278 * (1 - value), 0, 0,
+            0, 0, 0, 1, 0,
+          ]),
+          child: child,
+        ),
       ),
     );
   }

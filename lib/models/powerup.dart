@@ -39,13 +39,13 @@ enum PowerupCategory {
 
 enum PowerupType {
   // ── COMMON (Tier 1) ──────────────────────────────────────────────────────
-  timeWarp(
+  push(
     tier: PowerupTier.common,
-    category: PowerupCategory.defensive,
-    name: 'Time Warp',
-    description: 'Add 30 seconds to your clock',
-    icon: Icons.access_time_filled,
-    isTargeted: false,
+    category: PowerupCategory.hybrid,
+    name: 'Push',
+    description: 'Push an adjacent piece 1 square away',
+    icon: Icons.unfold_more,
+    isTargeted: true,
   ),
   sniper(
     tier: PowerupTier.rare,
@@ -71,13 +71,13 @@ enum PowerupType {
     icon: Icons.keyboard_double_arrow_up,
     isTargeted: true,
   ),
-  minorHeal(
+  pull(
     tier: PowerupTier.common,
-    category: PowerupCategory.defensive,
-    name: 'Minor Heal',
-    description: 'Undo your last move and replay',
-    icon: Icons.healing,
-    isTargeted: false,
+    category: PowerupCategory.hybrid,
+    name: 'Pull',
+    description: 'Pull an adjacent piece 1 square closer',
+    icon: Icons.unfold_less,
+    isTargeted: true,
   ),
 
   // ── UNCOMMON (Tier 2) ────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ enum PowerupType {
     name: 'Swap',
     description: 'Swap the positions of two of your own pieces',
     icon: Icons.swap_horiz,
-    isTargeted: true, // needs two targets, first target then second
+    isTargeted: true,
   ),
   conscription(
     tier: PowerupTier.rare,
@@ -215,21 +215,21 @@ enum PowerupType {
     icon: Icons.military_tech,
     isTargeted: false,
   ),
-  timeFreeze(
+  earthquake(
     tier: PowerupTier.legendary,
-    category: PowerupCategory.hybrid,
-    name: 'Time Freeze',
-    description: "Freeze opponent's clock for 60 seconds",
-    icon: Icons.timer_off,
-    isTargeted: false,
+    category: PowerupCategory.offensive,
+    name: 'Earthquake',
+    description: 'Push all adjacent enemy pieces 1 square away from a target',
+    icon: Icons.public,
+    isTargeted: true,
   ),
-  mirrorDimension(
+  portal(
     tier: PowerupTier.legendary,
     category: PowerupCategory.hybrid,
-    name: 'Mirror Dimension',
-    description: 'Clone your last move — it plays again automatically',
-    icon: Icons.flip,
-    isTargeted: false,
+    name: 'Portal',
+    description: 'Create two linked squares — pieces can teleport between them',
+    icon: Icons.cyclone,
+    isTargeted: true,
   );
 
   final PowerupTier tier;
@@ -317,7 +317,7 @@ class ActiveEffect {
   factory ActiveEffect.fromJson(Map<String, dynamic> json) {
     return ActiveEffect(
       type:
-          PowerupType.fromName(json['type'] as String) ?? PowerupType.timeWarp,
+          PowerupType.fromName(json['type'] as String) ?? PowerupType.push,
       targetSquare: json['targetSquare'] as String?,
       affectedSquares: (json['affectedSquares'] as List?)?.cast<String>(),
       turnsRemaining: json['turnsRemaining'] as int? ?? 0,

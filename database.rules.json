@@ -1,9 +1,11 @@
 {
   "rules": {
     "Accounts": {
+      // Allow reading for leaderboard
+      ".read": "auth != null",
+      ".indexOn": ["Elo"],
       "$uid": {
-        // Only the user can read and write their own profile
-        ".read": "auth != null && auth.uid == $uid",
+        // Only the user can write their own profile
         ".write": "auth != null && auth.uid == $uid"
       }
     },
@@ -20,8 +22,9 @@
     },
     "Matches": {
       "$matchId": {
-        // Only players in the match can read or write match data (keys must match lib/services/matchmaking_service.dart)
-        ".read": "auth != null && (data.child('WhiteID').val() == auth.uid || data.child('BlackID').val() == auth.uid)",
+        // Allow reading if the match doesn't exist yet (returns null) or if the user is a participant
+        ".read": "auth != null && (!data.exists() || data.child('WhiteID').val() == auth.uid || data.child('BlackID').val() == auth.uid)",
+        // Allow writing if the match doesn't exist (creation) or if the user is a participant
         ".write": "auth != null && (!data.exists() || data.child('WhiteID').val() == auth.uid || data.child('BlackID').val() == auth.uid)"
       }
     }

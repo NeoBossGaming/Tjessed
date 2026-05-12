@@ -18,6 +18,7 @@ import '../widgets/timer_widget.dart';
 import '../widgets/particle_overlay.dart';
 import '../widgets/animated_background.dart';
 import '../widgets/card_reveal_overlay.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../widgets/active_effects_hud.dart';
 import 'package:uuid/uuid.dart';
 
@@ -55,6 +56,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   final GameService _gameService = GameService();
   final DatabaseService _dbService = DatabaseService();
   final SoundService _soundService = SoundService();
+  final GlobalKey _boardKey = GlobalKey();
 
   // ── Board state ──────────────────────────────────────────────────────────────
   bool _isWhiteOrientation = true;
@@ -188,23 +190,25 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   void _setupMultiplayer() {
+    debugPrint('[SYNC] Initializing multiplayer match: ${widget.matchId}');
     _gameService.initialize(widget.matchId);
     _matchSub = _gameService.streamMatchData().listen((event) {
       if (!event.snapshot.exists || event.snapshot.value == null) {
-        debugPrint('[SYNC] No match data yet for ${widget.matchId}');
+        debugPrint('[SYNC] No match data found at Matches/${widget.matchId}');
         return;
       }
       
       final data = Map<String, dynamic>.from(event.snapshot.value as Map);
       final myUid = widget.playerUid.trim();
+      debugPrint('[SYNC] Data received. MyUID: $myUid');
       
       // Try multiple ways to find the role
       String? foundColor;
       String? oppName;
 
-      // 1. Exact match
       final blackId = (data['BlackID'] ?? '').toString().trim();
       final whiteId = (data['WhiteID'] ?? '').toString().trim();
+      debugPrint('[SYNC] Match Roles - White: $whiteId, Black: $blackId');
 
       if (myUid == blackId) {
         foundColor = 'black';
@@ -214,7 +218,6 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         oppName = data['BlackName']?.toString();
       } 
       
-      // 2. Case-insensitive fallback
       if (foundColor == null) {
         if (myUid.toLowerCase() == blackId.toLowerCase()) {
           foundColor = 'black';
@@ -227,6 +230,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
       if (foundColor != null) {
         if (_myColor != foundColor) {
+          debugPrint('[SYNC] Assigned color: $foundColor');
           setState(() {
             _myColor = foundColor;
             _isWhiteOrientation = foundColor == 'white';
@@ -234,34 +238,46 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         }
         _opponentName = oppName ?? 'Opponent';
       } else {
-        debugPrint('[SYNC] UID Mismatch: My=$myUid, White=$whiteId, Black=$blackId');
+        debugPrint('[SYNC] CRITICAL: UID Mismatch. My=$myUid is neither White=$whiteId nor Black=$blackId');
       }
 
       final incomingFen = data['FEN'] as String?;
-      final serverMoveCount = (data['MoveCount'] as num?)?.toInt() ?? 0;
-      final localMoveCount = _engine.getHistory().length;
+      final incomingFrom = data['LastMoveFrom'] as String?;
+      final incomingTo = data['LastMoveTo'] as String?;
+
       if (incomingFen != null &&
           incomingFen.isNotEmpty &&
-          (incomingFen != _engine.fen || serverMoveCount != localMoveCount)) {
-        debugPrint('[SYNC] FEN Update Received (moves server=$serverMoveCount local=$localMoveCount)');
+          incomingFen != _engine.fen) {
+        debugPrint('[SYNC] FEN Update: $incomingFen');
         setState(() {
           _engine.loadFen(incomingFen);
+          if (incomingFrom != null && incomingTo != null) {
+            _lastMoveSquares = [incomingFrom, incomingTo];
+          } else {
+            _lastMoveSquares = [];
+          }
         });
       }
 
       setState(() {
         if (_myColor != null) {
-          _myTimeLeft = data['TimeLeft${_myColor == 'white' ? 'White' : 'Black'}'] as int? ??
-              GameConstants.defaultTimeSeconds;
-          _opponentTimeLeft = data['TimeLeft${_myColor == 'white' ? 'Black' : 'White'}'] as int? ??
-              GameConstants.defaultTimeSeconds;
+          final myKey = _myColor == 'white' ? 'White' : 'Black';
+          final oppKey = _myColor == 'white' ? 'Black' : 'White';
+          _myTimeLeft = (data['TimeLeft$myKey'] as num?)?.toInt() ?? GameConstants.defaultTimeSeconds;
+          _opponentTimeLeft = (data['TimeLeft$oppKey'] as num?)?.toInt() ?? GameConstants.defaultTimeSeconds;
         }
 
         final status = data['GameStatus'] as String? ?? 'Active';
-        _isGameOver = status != 'Active';
-        if (_isGameOver) _clockTimer?.cancel();
+        if (status == 'Finished' && !_isGameOver) {
+          final wonBy = data['WonBy'] as String?;
+          _isGameOver = true;
+          _clockTimer?.cancel();
+          _showGameOverRemote(wonBy);
+        } else {
+          _isGameOver = status != 'Active';
+          if (_isGameOver) _clockTimer?.cancel();
+        }
 
-        // Sync powerups (needs assigned color)
         if (_myColor != null && data['Powerups'] != null) {
           _parsePowerupsFromDb(data['Powerups'] as Map<dynamic, dynamic>);
         }
@@ -273,6 +289,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           _startClock();
         }
       }
+    }, onError: (err) {
+      debugPrint('[SYNC] Firebase Stream Error: $err');
     });
   }
 
@@ -458,7 +476,11 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       _showSnack('Extra Turn!', AppColors.accentCyan);
     }
 
-    if (_engine.gameOver) { _handleGameOver('checkmate'); return; }
+    if (_engine.gameOver) { 
+      _syncState(); // Sync final move before ending
+      _handleGameOver('checkmate'); 
+      return; 
+    }
     if (_engine.inCheck) _soundService.play(SoundEvent.check);
 
     _syncState();
@@ -558,17 +580,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
     _triggerShake();
     
-    // For Minor Heal against AI, undo twice to get the player's turn back
-    if (p == PowerupType.minorHeal && !widget.isMultiplayer) {
-      _engine.undo(); // Undo AI's move
-      _engine.undo(); // Undo Player's move
-      _syncState();
-      _soundService.play(SoundEvent.powerupUse);
-      setState(() => _myPowerups.remove(p));
-      _showSnack('Rewound time! Your turn again.', AppColors.accentAmber);
-      return;
-    }
-
+    // Execution attempt
     final res = _powerupEngine.applyPowerup(
       type: p,
       engine: _engine,
@@ -603,10 +615,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       if (res.highlightSquares != null) {
         _highlightedSquares = [..._highlightedSquares, ...res.highlightSquares!];
       }
-      // Extra turn from freeze, double move, or mirror dimension
+      // Extra turn from freeze or double move
       if (p == PowerupType.freeze ||
-          p == PowerupType.doubleMove ||
-          p == PowerupType.mirrorDimension) {
+          p == PowerupType.doubleMove) {
         _hasExtraTurn = true;
       }
       if (res.removesEnemyPowerup && _opponentPowerups.isNotEmpty) {
@@ -637,13 +648,21 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   void _syncState() {
     if (!widget.isMultiplayer) return;
     debugPrint('[SYNC] Sending move state... Turn: ${_engine.turnColor}');
+    
+    String? fromSq;
+    String? toSq;
+    if (_lastMoveSquares.length >= 2) {
+      fromSq = _lastMoveSquares[0];
+      toSq = _lastMoveSquares[1];
+    }
+    
     _gameService.sendMove(
-      san: _engine.getHistoryString(),
       fen: _engine.fen,
       turn: _engine.turnColor,
-      moveCount: _engine.getHistory().length,
       timeLeftBlack: _myColor == 'black' ? _myTimeLeft : _opponentTimeLeft,
       timeLeftWhite: _myColor == 'white' ? _myTimeLeft : _opponentTimeLeft,
+      lastMoveFrom: fromSq,
+      lastMoveTo: toSq,
     );
     _gameService.updatePowerups(
       color: _myColor!,
@@ -678,27 +697,56 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       setState(() => _hasLost = true);
     }
 
+    final eloDelta = wonBy == 'me' ? 15 : (wonBy == 'Draw' ? 0 : -15);
     if (widget.isMultiplayer) {
       _gameService.endGame(status: 'Finished', wonBy: wonBy == 'me' ? _myColor! : (wonBy == 'opponent' ? (_myColor == 'white' ? 'black' : 'white') : 'draw'));
       _dbService.updateMatchStats(
         uid: widget.playerUid,
         isWin: wonBy == 'me',
         isDraw: wonBy == 'Draw',
-        eloChange: wonBy == 'me' ? 15 : (wonBy == 'Draw' ? 0 : -15),
+        eloChange: eloDelta,
       );
     }
 
-    _showGameOverDialog(resultText);
+    _showGameOverDialog(resultText, eloDelta);
   }
 
-  void _showGameOverDialog(String text) {
+  void _showGameOverRemote(String? wonByColor) {
+    String resultText;
+    int eloDelta = 0;
+
+    if (wonByColor == 'draw') {
+      resultText = 'Game Over — Draw';
+      eloDelta = 0;
+    } else if (wonByColor == _myColor) {
+      resultText = '🏆 You Win!';
+      eloDelta = 15;
+    } else {
+      resultText = '💀 You Lost!';
+      eloDelta = -15;
+      setState(() => _hasLost = true);
+    }
+
+    _showGameOverDialog(resultText, eloDelta);
+  }
+
+  void _showGameOverDialog(String text, int eloChange) {
+    final eloText = eloChange > 0 ? '+$eloChange Elo' : (eloChange < 0 ? '$eloChange Elo' : '0 Elo');
+    final eloColor = eloChange > 0 ? AppColors.accentGreen : (eloChange < 0 ? AppColors.accentRed : Colors.white70);
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.cardBg,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDimensions.borderRadius)),
-        title: Text(text, style: AppTextStyles.heading2, textAlign: TextAlign.center),
+        title: Column(
+          children: [
+            Text(text, style: AppTextStyles.heading2, textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Text(eloText, style: AppTextStyles.heading3.copyWith(color: eloColor)),
+          ],
+        ),
         content: Text('Return to lobby?', style: AppTextStyles.body, textAlign: TextAlign.center),
         actions: [
           TextButton(
@@ -786,6 +834,50 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                 child: ActiveEffectsHud(activeEffects: _activeEffects),
                               ),
 
+                            // ── Turn Indicator ───────────────────────────────────────
+                            if (!_isGameOver && _myColor != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: (_engine.turnColor == _myColor ? AppColors.accentCyan : AppColors.accentRed).withAlpha(40),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: (_engine.turnColor == _myColor ? AppColors.accentCyan : AppColors.accentRed).withAlpha(120),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _engine.turnColor == _myColor ? Icons.bolt : Icons.hourglass_empty,
+                                        size: 16,
+                                        color: _engine.turnColor == _myColor ? AppColors.accentCyan : AppColors.accentRed,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _engine.turnColor == _myColor ? 'YOUR TURN' : 'OPPONENT TURN',
+                                        style: AppTextStyles.caption.copyWith(
+                                          color: _engine.turnColor == _myColor ? AppColors.accentCyan : AppColors.accentRed,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ).animate(onPlay: (c) => c.repeat(reverse: true)).boxShadow(
+                                  begin: const BoxShadow(color: Colors.transparent),
+                                  end: BoxShadow(
+                                    color: (_engine.turnColor == _myColor ? AppColors.accentCyan : AppColors.accentRed).withAlpha(100),
+                                    blurRadius: 15,
+                                    spreadRadius: 2,
+                                  ),
+                                  duration: 1.5.seconds,
+                                ),
+                              ),
+
                             // ── Chess Board ───────────────────────────────────────
                             TweenAnimationBuilder<double>(
                               tween: Tween(begin: 0.0, end: _hasLost ? 1.0 : 0.0),
@@ -818,9 +910,14 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               child: DragTarget<PowerupType>(
+                                key: _boardKey,
                                 onWillAcceptWithDetails: (details) => !_isGameOver && _engine.turnColor == _myColor,
                                 onMove: (details) {
-                                  final RenderBox box = context.findRenderObject() as RenderBox;
+                                  final RenderBox? box = _boardKey.currentContext?.findRenderObject() as RenderBox?;
+                                  if (box == null) return;
+                                  
+                                  // details.offset is global top-left of feedback
+                                  // Center is at 48, 66 relative to card top-left
                                   final localPos = box.globalToLocal(details.offset + const Offset(48, 66));
                                   final square = _offsetToSquare(localPos, boardSize);
                                   if (_hoveredSquare != square) {
@@ -829,7 +926,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                 },
                                 onLeave: (data) => setState(() => _hoveredSquare = null),
                                 onAcceptWithDetails: (details) {
-                                  final RenderBox box = context.findRenderObject() as RenderBox;
+                                  final RenderBox? box = _boardKey.currentContext?.findRenderObject() as RenderBox?;
+                                  if (box == null) return;
+                                  
                                   final centerOffset = details.offset + const Offset(48, 66);
                                   final localPos = box.globalToLocal(centerOffset);
                                   final square = _offsetToSquare(localPos, boardSize);
@@ -867,6 +966,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                             selectedSquare: _selectedSquare,
                                             highlightedSquares: [..._highlightedSquares, ...previewSquares],
                                             lastMoveSquares: _lastMoveSquares,
+                                            hoveredSquare: _hoveredSquare,
                                           ),
                                           if (candidateData.isNotEmpty && _hoveredSquare != null)
                                             // Special preview tint for the zone
@@ -969,15 +1069,21 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                         left: 0,
                         right: 0,
                         child: Center(
-                          child: SizedBox(
-                            width: math.min(boardSize + 100, availableWidth - 32),
-                            child: PowerupBar(
-                              heldPowerups: _myPowerups,
-                              isMyTurn: !_isGameOver &&
-                                  _engine.turnColor == _myColor &&
-                                  _pendingTargetPowerup == null,
-                              onPowerupTap: _handlePowerupTap,
-                            ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(height: 16),
+                              SizedBox(
+                                width: math.min(boardSize + 100, availableWidth - 32),
+                                child: PowerupBar(
+                                  heldPowerups: _myPowerups,
+                                  isMyTurn: !_isGameOver &&
+                                      _engine.turnColor == _myColor &&
+                                      _pendingTargetPowerup == null,
+                                  onPowerupTap: _handlePowerupTap,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

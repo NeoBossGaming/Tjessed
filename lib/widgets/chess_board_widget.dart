@@ -15,6 +15,7 @@ class ChessBoardWidget extends StatefulWidget {
   final String? selectedSquare;
   final List<String> highlightedSquares;
   final List<String> lastMoveSquares;
+  final String? hoveredSquare;
 
   const ChessBoardWidget({
     super.key,
@@ -27,6 +28,7 @@ class ChessBoardWidget extends StatefulWidget {
     this.selectedSquare,
     this.highlightedSquares = const [],
     this.lastMoveSquares = const [],
+    this.hoveredSquare,
   });
 
   @override
@@ -266,28 +268,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget> {
           );
           break;
         case PowerupType.freeze:
-          // Blue frost overlay
-          overlays.add(
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      colors: [
-                        Colors.transparent,
-                        AppColors.accentCyan.withAlpha(30),
-                        AppColors.accentCyan.withAlpha(60),
-                      ],
-                      stops: const [0.5, 0.8, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-          break;
-        case PowerupType.timeFreeze:
-          // Blue pulsing edges
+          // Blue frost overlay + pulsing edges
           overlays.add(
             Positioned.fill(
               child: IgnorePointer(
@@ -300,8 +281,10 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget> {
                     gradient: RadialGradient(
                       colors: [
                         Colors.transparent,
-                        AppColors.accentCyan.withAlpha(15),
+                        AppColors.accentCyan.withAlpha(30),
+                        AppColors.accentCyan.withAlpha(60),
                       ],
+                      stops: const [0.5, 0.8, 1.0],
                     ),
                   ),
                 ),
@@ -368,6 +351,24 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget> {
               (piece.color.toString() == 'w') == widget.engine.isWhiteTurn) {
             highlights.add(_buildHighlight(visualRow, visualCol, squareSize, AppColors.checkHighlight));
           }
+        }
+
+        // Hover highlight
+        if (widget.hoveredSquare == square) {
+          highlights.add(
+            Positioned(
+              left: visualCol * squareSize,
+              top: visualRow * squareSize,
+              width: squareSize,
+              height: squareSize,
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white.withAlpha(150), width: 3),
+                  color: Colors.white.withAlpha(40),
+                ),
+              ),
+            ),
+          );
         }
       }
     }
