@@ -4,3 +4,6 @@ A simple modification of chess. Instead of boring casual chess, we introduce a n
 
 ## History
 This project was made using Antigravity, as a part of a school project, introducing students into the vast world of AI, showing the potential of developement through AI, and the need to understand concepts such as APIs, Firebase, and other neccesarry things to keep up with this fast AI age.
+
+## Try it out!
+Try out tjessed versus an AI bot or with your friend!: (https://tjessed-leo.netlify.app/)
