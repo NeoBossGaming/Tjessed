@@ -1,16 +1,6 @@
-# neo
+# Tjessed
 
-A new Flutter project.
+A simple modification of chess. Instead of boring casual chess, we introduce a new gimmick: powerups. Whenever you capture a piece, a powerup could be obtained, performing various different speels with unique abilities, per piece that you capture.
 
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## History
+This project was made using Antigravity, as a part of a school project, introducing students into the vast world of AI, showing the potential of developement through AI, and the need to understand concepts such as APIs, Firebase, and other neccesarry things to keep up with this fast AI age.
